@@ -22,53 +22,55 @@ Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
 Generate-Pipeline laeuft komplett durch (mit MockProvider).
 
-### Was in der letzten Session gefixt wurde (7 Bugs)
+### Was bisher implementiert wurde
 
-1. **`@tool` fehlte auf 5 Type-Scripten** — `llm_response.gd`, `validation_result.gd`,
-   `build_result.gd`, `resolved_spec.gd`, `logger.gd` hatten kein `@tool`.
-   Konnten bei Editor-Nutzung subtile Fehler verursachen.
+**Phase 1-6 (MVP):**
+- Alle 12 Module (A-L) implementiert und verdrahtet
+- Plugin laedt/entlaedt fehlerfrei in Godot 4.6.1
+- 7 Bugs gefixt (@tool auf Type-Scripts, typed Array Safety, null Guards, lokale Transforms)
 
-2. **`_LLMResponseScript` preload Duplikat** — `llm_provider.gd` hatte
-   `const _LLMResponseScript: GDScript = preload(...)` obwohl `LLMResponse`
-   bereits per `class_name` global registriert ist. Entfernt; alle Stellen
-   nutzen jetzt `LLMResponse.create_success()`/`create_failure()` direkt.
-   Betraf auch `mock_provider.gd`.
+**Prio 1: Async Pipeline + LLM Provider (✅ ERLEDIGT)**
+- `LLMProvider` Basisklasse: `_http_node` Injection (RefCounted kann keine Nodes ownen),
+  `_api_key` Management, `cancel()`, `fetch_available_models()` (async-faehig)
+- `OllamaProvider`: async `send_request()` via `await _http_node.request_completed`
+  gegen `localhost:11434/api/generate`, Model-Liste via `/api/tags`,
+  volles Error-Mapping (LLM_ERR_NETWORK/TIMEOUT/AUTH/RATE_LIMIT/SERVER/NON_JSON)
+- `Orchestrator.start_generation()` ist async mit `await` auf LLM-Call,
+  Cancellation-Guard via `_correlation_id` nach jedem await
+- `plugin.gd`: HTTPRequest-Node Lifecycle, Provider-Registry (MockProvider + Ollama),
+  dynamisches Provider-Switching mit async Model-Fetch, API-Key Persistence via EditorSettings
+- Dock: `provider_changed` Signal, API-Key Feld (secret, toggle per Provider),
+  Provider-Dropdown Verdrahtung
+- MockProvider: unveraendert synchron, `await` auf non-Coroutine returned sofort
 
-3. **Node vs Node3D Typ-Mismatch** — `plugin.gd` holte `get_edited_scene_root()`
-   als `Node`, aber `orchestrator.start_generation()` erwartet `Node3D`.
-   Jetzt mit `is Node3D`-Check und Fehlermeldung bei 2D-Szenen.
+**Prio 2: EditorUndoRedoManager (✅ ERLEDIGT)**
+- `PreviewLayer.apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D)`
+- `_do_apply()` / `_undo_apply()` private Methoden mit `_applied_children: Array[Node]` Tracking
+- `create_action("AI Scene Gen: Apply Preview")` + `add_do_method` / `add_undo_method`
+- `add_do_reference` / `add_undo_reference` auf alle Nodes fuer GC-Safety
+- Null-Guard: `undo_redo == null` -> direktes Apply ohne Undo (Test-Kompatibilitaet)
+- Plugin uebergibt `get_undo_redo()` bei Apply
 
-4. **Typed Array Mismatch (3 Stellen)** — Untyped `["MockProvider"]` und
-   `[{error_dict}]` an `Array[String]`/`Array[Dictionary]` Parameter uebergeben.
-   Crashte bei Dynamic Dispatch (duck-typed `_dock: Control`).
-   Fix: Alle Arrays als typed Variable deklariert vor Uebergabe.
-   Betraf `plugin.gd` (2x) und `ai_scene_gen_dock.gd` (1x).
+**Prio 3: Import/Export UI (✅ ERLEDIGT)**
+- Import/Export Buttons im Dock ("Import Spec" / "Export Spec") mit State-Management
+- `EditorFileDialog` (ACCESS_RESOURCES, `*.scenespec.json` Filter)
+- Import-Flow: Dialog -> `persistence.import_spec(path)` -> `orchestrator.rebuild_from_spec(spec, root)`
+- Export-Flow: Spec-Check -> Dialog -> `persistence.export_spec(last_spec, path)`
+- Fehlerhandling fuer leere Specs, fehlgeschlagene Imports, Write-Fehler
 
-5. **`null as String` crash** — `scene_builder.gd` castete
-   `node["primitive_shape"] as String` ohne Null-Check. Mock-Daten
-   haben `"primitive_shape": null`. Fix: Null-Guard + `str()`.
-
-6. **`camera.look_at()` ohne Scene Tree** — `post_processor.gd`
-   `CameraFramingPass` rief `look_at()` auf Nodes die noch nicht im
-   Tree waren. Fix: `Basis.looking_at()` statt `look_at()`.
-
-7. **`global_transform` ohne Scene Tree** — `CollisionCheckPass._approx_aabb()`
-   und `CameraFramingPass._get_node_aabb()` nutzten `global_transform`
-   auf Nodes ausserhalb des Trees. Fix: Lokales `transform` statt `global_transform`.
-
-### File-Inventar (28 .gd + 2 .json + 2 .md + plugin.cfg + project.godot)
+### File-Inventar (29 .gd + 2 .json + 2 .md + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
   plugin.cfg                           # Plugin-Metadaten
   plugin.gd                            # EditorPlugin Entry — verdrahtet alle Module
   core/
-    orchestrator.gd                    # B: Pipeline State Machine (synchron!)
-    prompt_compiler.gd                 # D: Prompt-Zusammenbau
-    scene_spec_validator.gd            # E: Schema-Validierung (1269 Zeilen) - groesstes Modul
+    orchestrator.gd                    # B: Async Pipeline State Machine
+    prompt_compiler.gd                 # D: Prompt-Zusammenbau (single + two-stage)
+    scene_spec_validator.gd            # E: Schema-Validierung (1269 Zeilen)
     scene_builder.gd                   # H: Deterministischer Builder
     post_processor.gd                  # I: 5 Post-Processing Passes
-    preview_layer.gd                   # J: Preview-Management
+    preview_layer.gd                   # J: Preview + UndoRedo
   types/
     llm_response.gd                    # @tool, LLMResponse mit static factory methods
     validation_result.gd               # @tool, ValidationResult
@@ -87,7 +89,7 @@ addons/ai_scene_gen/
     ai_scene_gen_dock.gd               # A: Komplettes Dock UI (rein programmatisch)
   util/
     logger.gd                          # @tool, AiSceneGenLogger mit 4 Log-Levels + Metrics
-    persistence.gd                     # L: Settings/SceneSpec I/O
+    persistence.gd                     # L: Settings/SceneSpec I/O + API-Key via EditorSettings
   mocks/
     outdoor_clearing.scenespec.json    # Example 1 (Outdoor Clearing mit Baum, Fels, Pfad)
     interior_room.scenespec.json       # Example 2 (Raum mit Waenden und Tisch)
@@ -129,21 +131,24 @@ addons/ai_scene_gen/
 ### Signal-Verdrahtung (plugin.gd)
 
 ```
-AiSceneGenDock.generate_requested -> plugin._on_generate_requested -> orchestrator.start_generation()
-AiSceneGenDock.apply_requested    -> plugin._on_apply_requested    -> orchestrator.apply_preview()
-AiSceneGenDock.discard_requested  -> plugin._on_discard_requested  -> orchestrator.discard_preview()
+AiSceneGenDock.generate_requested  -> plugin._on_generate_requested  -> await orchestrator.start_generation()
+AiSceneGenDock.apply_requested     -> plugin._on_apply_requested     -> orchestrator.apply_preview(get_undo_redo(), root)
+AiSceneGenDock.discard_requested   -> plugin._on_discard_requested   -> orchestrator.discard_preview()
+AiSceneGenDock.provider_changed    -> plugin._on_provider_changed    -> orchestrator.set_llm_provider() + await fetch_models
+AiSceneGenDock.import_requested    -> plugin._on_import_requested    -> EditorFileDialog -> persistence.import_spec -> orchestrator.rebuild_from_spec
+AiSceneGenDock.export_requested    -> plugin._on_export_requested    -> EditorFileDialog -> persistence.export_spec
 orchestrator.pipeline_state_changed -> plugin._on_pipeline_state_changed -> dock.set_state()
 orchestrator.pipeline_progress      -> plugin._on_pipeline_progress      -> dock.show_progress()
 orchestrator.pipeline_completed     -> plugin._on_pipeline_completed     -> dock.show_progress(1.0)
 orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock.show_errors()
 ```
 
-### Pipeline-Flow (orchestrator.start_generation)
+### Pipeline-Flow (orchestrator.start_generation — async)
 
 ```
 1. PromptCompiler.compile_single_stage(request) -> compiled_prompt
-2. LLMProvider.send_request(prompt, model, 0.0, seed) -> LLMResponse (raw JSON)
-   (bis zu 2 Retries bei Fehler)
+2. await LLMProvider.send_request(prompt, model, 0.0, seed) -> LLMResponse
+   (bis zu 2 Retries bei Fehler, Cancellation-Guard via correlation_id)
 3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
 4. AssetResolver.resolve_nodes(spec, registry) -> ResolvedSpec
 5. SceneBuilder.build(resolved_spec, preview_root) -> BuildResult
@@ -151,69 +156,54 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 7. PreviewLayer.show_preview(root, scene_root)
 ```
 
-## Bekannte Limitierungen (keine Bugs, aber Design-Grenzen)
+## Bekannte Limitierungen (keine Bugs, Design-Grenzen)
 
-1. ~~**Pipeline ist synchron**~~ ✅ GELOEST — `start_generation()` ist jetzt async
-   mit `await` auf LLM-Calls. Cancellation-Guard via Correlation-ID.
-
-2. ~~**Kein Undo/Redo**~~ ✅ GELOEST — `apply_to_scene()` nutzt
-   `EditorUndoRedoManager` mit `_do_apply`/`_undo_apply`. Ctrl+Z revertiert Apply.
-
-3. ~~**Keine Import/Export UI**~~ ✅ GELOEST — Import/Export Buttons im Dock,
-   `EditorFileDialog` mit `.scenespec.json` Filter, voll verdrahtet mit Persistence.
-
-4. **Post-Processor nutzt lokale Transforms** — Korrekt fuer flache
+1. **Post-Processor nutzt lokale Transforms** — Korrekt fuer flache
    Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
    Nodes waere `global_transform` genauer, geht aber erst nach Tree-Insert.
-   Fuer MVP ausreichend.
+
+2. **Undo revertiert nur Tree-Operationen** — Orchestrator/Dock State
+   (IDLE/PREVIEW_READY) wird beim Undo nicht automatisch zurueckgesetzt.
+   Nodes werden korrekt revertiert, aber UI zeigt weiter IDLE.
+
+3. **Shared HTTPRequest** — Ein HTTPRequest-Node fuer alle Provider.
+   Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
+   verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
+
+4. **Nur Single-Stage Mode** — `compile_plan_stage()` und `compile_spec_stage()`
+   existieren im PromptCompiler, aber der Orchestrator ruft nur
+   `compile_single_stage()` auf. Two-Stage mit zweitem LLM-Call fehlt.
 
 ## Fehlende Features (nach Architektur-Doc, priorisiert)
 
-### Prio 1: Echte LLM Provider + Async Pipeline
-
-- **Dateien erstellen:**
-  - `llm/openai_provider.gd` — HTTPRequest + Bearer Token Auth
-  - `llm/ollama_provider.gd` — HTTPRequest gegen localhost:11434
-  - (optional spaeter) `llm/anthropic_provider.gd` — x-api-key Header
-
-- **Architektur-Aenderungen:**
-  - `LLMProvider.send_request()` wird async: `func send_request(...) -> LLMResponse`
-    muss ein `await` nutzen (HTTPRequest.request_completed Signal)
-  - Problem: LLMProvider ist RefCounted, kein Node. Kann kein HTTPRequest
-    als Child haben. Loesung: `plugin.gd` erstellt HTTPRequest-Node in
-    `_enter_tree()`, gibt Referenz an Provider via Setter.
-  - `AiSceneGenOrchestrator.start_generation()` wird async (`await`)
-  - `plugin._on_generate_requested()` ruft `await _orchestrator.start_generation()`
-  - MockProvider bleibt synchron (kein await noetig, return sofort)
-
-- **UI-Aenderungen:**
-  - Provider-Dropdown muss dynamisch befuellt werden
-  - Model-Dropdown aktualisiert sich bei Provider-Wechsel
-  - API-Key Eingabefeld im Dock (oder via EditorSettings)
-  - `AiSceneGenPersistence` hat `get_api_key()`/`set_api_key()` schon,
-    braucht `set_editor_interface()` Aufruf von plugin.gd
+### ~~Prio 1: Async Pipeline + LLM Provider~~ ✅ ERLEDIGT
 
 ### ~~Prio 2: EditorUndoRedoManager~~ ✅ ERLEDIGT
 
-- `PreviewLayer.apply_to_scene(undo_redo, scene_root)` mit vollstaendigem Undo/Redo
-- `_do_apply()` / `_undo_apply()` private Methoden, `_applied_children` Tracking
-- `plugin.gd` uebergibt `get_undo_redo()` bei apply
-- Null-Guard: ohne UndoRedoManager = direktes Apply (Fallback)
-
 ### ~~Prio 3: Import/Export UI~~ ✅ ERLEDIGT
 
-- Import/Export Buttons im Dock mit State-Management
-- `EditorFileDialog` (ACCESS_RESOURCES, `.scenespec.json` Filter)
-- Import: `persistence.import_spec(path)` -> `orchestrator.rebuild_from_spec(spec, root)`
-- Export: `persistence.export_spec(last_spec, path)` mit Fehlerhandling
-- Dock Signals: `import_requested` / `export_requested` -> Plugin handlers
+### Prio 4: Two-Stage Mode (NAECHSTER SCHRITT)
 
-### Prio 4: Two-Stage Mode
+**Was:** Bei komplexen Prompts (viele Objekte, raeumliche Beziehungen) einen
+zweistufigen LLM-Call machen: erst Plan, dann SceneSpec basierend auf dem Plan.
 
-- `PromptCompiler` hat `compile_plan_stage()` + `compile_spec_stage()` schon
-- Orchestrator braucht zweiten LLM-Call: Plan -> Spec
-- Heuristik: >30 Woerter oder >15 Objekte -> auto two-stage
-- UI: Checkbox "Two-Stage" im Dock
+**Voraussetzungen (bereits implementiert):**
+- `PromptCompiler.compile_plan_stage(request: Dictionary) -> String` existiert
+- `PromptCompiler.compile_spec_stage(request: Dictionary, plan_text: String) -> String` existiert
+- Orchestrator ist bereits async mit `await` auf LLM-Calls
+
+**Was zu tun ist:**
+- Orchestrator: `start_generation()` erweitern mit Two-Stage Pfad
+  - Heuristik: >30 Woerter im Prompt ODER `request["two_stage"] == true` -> Two-Stage
+  - Stage 1: `compile_plan_stage(request)` -> `await send_request()` -> plan_text
+  - Stage 2: `compile_spec_stage(request, plan_text)` -> `await send_request()` -> raw_json
+  - Weiter wie bisher ab Validation (Step 3)
+- Dock: CheckBox "Two-Stage" hinzufuegen (default: aus)
+  - In `get_generation_request()` als `"two_stage": bool` aufnehmen
+- Pipeline-Progress anpassen: 0.0-0.05 Compile, 0.05-0.15 Plan-LLM, 0.15-0.30 Spec-LLM, 0.30+ wie bisher
+- Cancellation-Guard nach jedem `await` (wie bereits bei Single-Stage)
+
+**Architektur-Referenz:** ARCHITECTURE_INTEGRATED.md Abschnitt 6 "Two-Stage vs Single-Stage" (Zeile ~1497)
 
 ### Prio 5: Variation Mode + Asset Tag Browser
 
@@ -258,7 +248,7 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 - Abschnitt 4: Alle 12 Module mit Interfaces, Error Codes, Test Plans
 - Abschnitt 5: SceneSpec JSON Schema v1.0.0 + Beispiele
-- Abschnitt 6: LLM System Instruction Template
+- Abschnitt 6: LLM System Instruction Template + Two-Stage Design
 - Abschnitt 7: 40 Test Cases (T01-T40) + CI Plan
 - Abschnitt 9: Mermaid-Diagramme (Component, Sequence, State, Data Flow)
 - Abschnitt 10: Security & Safety Model
@@ -273,3 +263,51 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 5. **Two-Stage Mode im Orchestrator** (naechster logischer Schritt)
 6. Variation Mode + Asset Tag Browser
 7. CI/CD (GUT + GitHub Actions)
+
+---
+
+## Agenten-Prompt: Two-Stage Mode implementieren
+
+> Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
+
+```
+Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext. Danach
+ARCHITECTURE_INTEGRATED.md Abschnitt 6 "Two-Stage vs Single-Stage" (ca. Zeile 1497)
+und Abschnitt 4.D (Prompt Compiler) fuer die Modul-Specs.
+
+Naechster Schritt: Two-Stage Mode im Orchestrator implementieren.
+
+Konkret:
+
+1. `orchestrator.gd` -> `start_generation()` erweitern:
+   - Heuristik: `request.get("two_stage", false)` ODER Wortanzahl im
+     `user_prompt` > 30 -> Two-Stage Modus aktivieren
+   - Stage 1: `_prompt_compiler.compile_plan_stage(request)` -> await `_llm_provider.send_request()`
+     -> plan_text extrahieren aus LLMResponse.get_raw_body()
+   - Cancellation-Guard nach await (correlation_id check)
+   - Stage 2: `_prompt_compiler.compile_spec_stage(request, plan_text)` -> await `_llm_provider.send_request()`
+     -> raw_json (weiter wie bisher ab Validation)
+   - Cancellation-Guard nach await
+   - Pipeline-Progress anpassen: 0.0 Compile, 0.05 Plan-LLM, 0.15 Spec-LLM, 0.30 Validate, etc.
+   - Single-Stage Pfad bleibt unveraendert als Default
+
+2. `ai_scene_gen_dock.gd` -> Two-Stage CheckBox hinzufuegen:
+   - `var _two_stage_check: CheckBox` im Settings-Bereich (nach Style, vor Seed)
+   - Default: unchecked
+   - In `get_generation_request()` als `"two_stage": _two_stage_check.button_pressed` aufnehmen
+
+3. `prompt_compiler.gd` -> Pruefen ob `compile_plan_stage()` und `compile_spec_stage()`
+   korrekt implementiert sind (sie existieren bereits). Falls noetig, anpassen damit:
+   - Plan-Stage: LLM soll JSON Plan mit {name, approximate_position, role, notes} Arrays ausgeben
+   - Spec-Stage: Plan-JSON wird als LAYOUT PLAN Kontext injiziert
+
+4. In Godot testen (Pfad: J:\Godot\Godot_v4.6.1-stable_win64.exe):
+   - `--headless --editor --quit-after 5` fuer Plugin-Load-Test
+   - Alle Fehler fixen
+
+5. Nach Abschluss: Alles committen und auf GitHub pushen.
+   Commit-Message: "feat: two-stage generation mode"
+
+Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten, besonders
+typed Arrays bei Dynamic Dispatch. Sicherheits-Invarianten niemals brechen.
+```

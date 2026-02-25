@@ -8,7 +8,7 @@ This EditorPlugin lets you type a natural-language prompt and generates a 3D sce
 
 - Godot 4.4+ (tested on 4.6.1)
 - Pure GDScript, no GDExtension needed
-- Optional: API key for OpenAI/Anthropic (MockProvider works offline)
+- Optional: [Ollama](https://ollama.com) for local LLM inference (MockProvider works offline)
 
 ## Installation
 
@@ -22,11 +22,28 @@ This EditorPlugin lets you type a natural-language prompt and generates a 3D sce
 1. Open or create a 3D scene (e.g. Node3D as root)
 2. Find the "AI Scene Generator" panel in the right dock
 3. Type a scene description, e.g.: "a medieval courtyard with a well in the center"
-4. Provider: MockProvider (default, works offline)
+4. Provider: MockProvider (default, works offline) or Ollama (local LLM)
 5. Style: blockout (grey-box prototyping)
 6. Click "Generate Scene"
 7. Preview appears in the viewport with temporary nodes
 8. Click "Apply" to commit to the scene, or "Discard" to remove
+9. Ctrl+Z undoes an applied preview (full undo/redo support)
+
+## Providers
+
+| Provider | Setup | API Key |
+|----------|-------|---------|
+| **MockProvider** | None (offline, ships with plugin) | No |
+| **Ollama** | Install [Ollama](https://ollama.com), run a model | No |
+
+Select the provider from the dropdown. For Ollama, models are fetched
+automatically from your local instance. The model dropdown updates
+when you switch providers.
+
+## Import / Export
+
+- **Export Spec**: Save the last generated SceneSpec as `.scenespec.json`
+- **Import Spec**: Load a SceneSpec and rebuild the scene (skips LLM call)
 
 ## Plugin Architecture
 
@@ -34,7 +51,7 @@ Brief overview with the module list:
 
 - **A: UI Dock** – prompt input and controls
 - **B: Orchestrator** – pipeline state machine
-- **C: LLM Provider** – pluggable AI backends (Mock, OpenAI, Anthropic, Ollama)
+- **C: LLM Provider** – pluggable AI backends (Mock, Ollama; OpenAI/Anthropic planned)
 - **D: Prompt Compiler** – builds the LLM prompt from user inputs
 - **E: SceneSpec Validator** – validates the JSON schema with security checks
 - **F: Asset Registry + Resolver** – maps tags to project assets
