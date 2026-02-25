@@ -16,12 +16,13 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE (Phase 1-6 + Prio 1-4)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS (Phase 1-6 + Prio 1-5)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
 Generate-Pipeline laeuft komplett durch (mit MockProvider).
 Two-Stage Generation Mode ist implementiert und getestet.
+Variation Mode und Asset Tag Browser sind implementiert und getestet.
 
 ### Was bisher implementiert wurde
 
@@ -224,12 +225,17 @@ Shared (ab Validation):
 
 ### ~~Prio 4: Two-Stage Mode~~ ✅ ERLEDIGT
 
-### Prio 5: Variation Mode + Asset Tag Browser (NAECHSTER SCHRITT)
+### Prio 5: Variation Mode + Asset Tag Browser (✅ ERLEDIGT)
 
-- FR-14: Random Suffix an Prompt wenn Variation aktiviert
-- FR-13: Panel das registrierte Tags zeigt
+- FR-14: Variation CheckBox im Dock, Random Suffix an Prompt via PromptCompiler
+  `[variation_seed={randi()}]` wird an user_prompt angehängt bevor kompiliert wird
+- FR-13: Aufklappbarer "Available Asset Tags" Browser im Dock
+  - Liest Tags aus AssetTagRegistry (via Orchestrator -> plugin.gd -> dock)
+  - Selektierte Tags werden in `get_generation_request()["available_asset_tags"]` aufgenommen
+  - Zeigt "No asset tags registered" wenn Registry leer
+- plugin.gd: `_sync_asset_tags_to_dock()` leitet Registry-Tags an Dock weiter
 
-### Prio 6: CI/CD
+### Prio 6: CI/CD (NAECHSTER SCHRITT)
 
 - GUT als Addon installieren
 - Tests via `godot --headless --script addons/gut/gut_cmdln.gd`
@@ -281,65 +287,74 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 3. ~~EditorUndoRedoManager in Preview Layer~~ ✅ ERLEDIGT
 4. ~~Import/Export Buttons im Dock~~ ✅ ERLEDIGT
 5. ~~Two-Stage Mode im Orchestrator~~ ✅ ERLEDIGT
-6. **Variation Mode + Asset Tag Browser** (naechster logischer Schritt)
-7. CI/CD (GUT + GitHub Actions)
+6. ~~Variation Mode + Asset Tag Browser~~ ✅ ERLEDIGT
+7. **CI/CD (GUT + GitHub Actions)** (naechster logischer Schritt)
 
 ---
 
-## Agenten-Prompt: Prio 5 — Variation Mode + Asset Tag Browser
+## Agenten-Prompt: Prio 6 — CI/CD (GUT + GitHub Actions)
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4.A (Dock), 4.D (Prompt Compiler),
-und 4.F (Asset Resolver + Registry) fuer die Modul-Specs.
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 7 (Test Plan) fuer die Test-Specs.
 
-Prio 1-4 sind erledigt (Async, Undo, Import/Export, Two-Stage).
-Naechster Schritt: Prio 5 — Variation Mode + Asset Tag Browser.
+Prio 1-5 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags).
+Naechster Schritt: Prio 6 — CI/CD mit GUT und GitHub Actions.
 
-SCHRITT 1: Variation Mode (FR-14)
+SCHRITT 1: GUT Test-Framework Setup
 
-1a. `ai_scene_gen_dock.gd` -> Variation-CheckBox hinzufuegen:
-    - `var _variation_check: CheckBox` im Settings-Bereich (nach Two-Stage, vor Seed)
-    - Default: unchecked
-    - In `get_generation_request()` als `"variation": _variation_check.button_pressed` aufnehmen
+1a. GUT als Addon installieren:
+    - `addons/gut/` als Git-Submodule oder manuell (v9.x)
+    - plugin.cfg fuer GUT einrichten
+    - `.gutconfig.json` im Projekt-Root:
+      - Test-Dirs: `["res://addons/ai_scene_gen/tests/"]`
+      - Prefix: `test_`
+      - Suffix: `.gd`
 
-1b. `prompt_compiler.gd` -> Variation-Suffix an Prompt anhaengen:
-    - Wenn `request.get("variation", false)` == true:
-      Einen zufaelligen Suffix an den user_prompt anhaengen BEVOR kompiliert wird,
-      z.B. " [variation_seed={randi()}]" damit der LLM unterschiedliche Layouts generiert
-    - Der Seed im Request bleibt gleich (deterministische Builds), aber der Prompt
-      variiert leicht -> anderes LLM-Ergebnis
+1b. Bestehende Tests (5 Files) auf GUT-Syntax migrieren:
+    - `test_validator.gd` (19 Tests)
+    - `test_primitive_factory.gd` (14 Tests)
+    - `test_prompt_compiler.gd` (13 Tests)
+    - `test_scene_builder.gd` (9 Tests)
+    - `test_asset_resolver.gd` (11 Tests)
+    - Jeder Test: `extends GutTest`, `func test_*()`, `assert_*` statt eigener Asserts
+    - Tests muessen headless laufen: kein UI, kein Editor-API
 
-SCHRITT 2: Asset Tag Browser (FR-13)
+1c. Neue Tests fuer Prio 1-5 Features schreiben:
+    - OllamaProvider: Mock-HTTP, error mapping, cancel
+    - Orchestrator: Two-Stage flow, cancel, correlation_id
+    - Dock: get_generation_request() shape, variation flag, asset tags
+    - PromptCompiler: variation suffix injection
 
-2a. `ai_scene_gen_dock.gd` -> Asset-Tag-Browser Panel:
-    - Neuer aufklappbarer Bereich unter den Bounds: "Available Asset Tags"
-    - Liest Tags aus der `AssetTagRegistry` (wird via Orchestrator uebergeben)
-    - Zeigt jeden Tag als Label an (mit Kategorie wenn vorhanden)
-    - Selektierte Tags werden in `get_generation_request()["available_asset_tags"]` aufgenommen
-    - Wenn keine Tags registriert: "No asset tags registered" Label anzeigen
+SCHRITT 2: GitHub Actions Workflow
 
-2b. `plugin.gd` -> Asset Registry an Dock weiterreichen:
-    - Nach Plugin-Init: Dock ueber verfuegbare Tags informieren
-    - Signal oder direkter Call wenn Registry sich aendert
+2a. `.github/workflows/test.yml`:
+    - Trigger: push + PR auf main
+    - Job: ubuntu-latest
+    - Godot 4.6.1 stable Linux headless download
+    - `godot --headless --script addons/gut/gut_cmdln.gd` ausfuehren
+    - Exit code pruefen
+
+2b. Badge in README.md einbinden
 
 SCHRITT 3: Testen und Committen
 
-3a. In Godot testen (Pfad: J:\Godot\Godot_v4.6.1-stable_win64.exe):
-    - `--headless --editor --quit-after 5` fuer Plugin-Load-Test
-    - Alle Fehler fixen
+3a. Lokal testen:
+    - `J:\Godot\Godot_v4.6.1-stable_win64.exe --headless --script addons/gut/gut_cmdln.gd`
+    - Alle Tests muessen PASS sein
 
 3b. HANDOFF.md updaten:
-    - "Prio 5" als erledigt markieren
-    - Neuen Agenten-Prompt fuer Prio 6 (CI/CD) schreiben
-    - File-Count pruefen und ggf. anpassen
+    - "Prio 6" als erledigt markieren
+    - File-Count aktualisieren
+    - Neuen Agenten-Prompt fuer Prio 7 (weitere Provider) schreiben
 
-3c. Nach Abschluss: Alles committen und auf GitHub pushen.
-    Commit-Message: "feat: variation mode + asset tag browser"
+3c. Committen und pushen.
+    Commit-Message: "feat: GUT test framework + GitHub Actions CI"
 
-Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten, besonders
-typed Arrays bei Dynamic Dispatch. Sicherheits-Invarianten niemals brechen.
+Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
+Tests muessen headless laufen (kein UI-Dependency). .gdignore im tests/
+Ordner NICHT entfernen — GUT findet Tests ueber .gutconfig.json.
 ```
 

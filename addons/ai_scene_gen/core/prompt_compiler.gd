@@ -135,6 +135,10 @@ func _compile_internal(request: Dictionary, plan_section: String, append_plan_fo
 		_log_error(PROMPT_ERR_EMPTY, "Cannot compile an empty prompt.")
 		return ""
 
+	if request.get("variation", false):
+		var variation_seed: int = randi()
+		user_prompt += " [variation_seed=%d]" % variation_seed
+
 	var style_preset: String = request.get("style_preset", "blockout")
 	if style_preset not in VALID_STYLE_PRESETS:
 		_log_error(PROMPT_ERR_INVALID_PRESET, "Unknown style preset: '%s'." % style_preset)

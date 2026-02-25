@@ -33,6 +33,7 @@ var _style_dropdown: OptionButton
 var _seed_spinbox: SpinBox
 var _seed_random_button: Button
 var _two_stage_check: CheckBox
+var _variation_check: CheckBox
 var _bounds_x: SpinBox
 var _bounds_y: SpinBox
 var _bounds_z: SpinBox
@@ -49,6 +50,10 @@ var _status_label: Label
 var _progress_bar: ProgressBar
 var _error_container: VBoxContainer
 var _error_scroll: ScrollContainer
+var _asset_tag_section: VBoxContainer
+var _asset_tag_container: VBoxContainer
+var _asset_tag_checks: Array[CheckBox] = []
+var _asset_tag_empty_label: Label
 var _state: int = DockState.IDLE
 
 
@@ -63,6 +68,7 @@ func _ready() -> void:
 	_build_header(root_vbox)
 	_build_prompt_section(root_vbox)
 	_build_settings_section(root_vbox)
+	_build_asset_tag_section(root_vbox)
 	_build_action_buttons(root_vbox)
 	_build_io_buttons(root_vbox)
 	_build_status_section(root_vbox)
@@ -201,15 +207,21 @@ func get_generation_request() -> Dictionary:
 	if _style_dropdown.selected >= 0:
 		style_text = _style_dropdown.get_item_text(_style_dropdown.selected)
 
+	var selected_tags: Array[String] = []
+	for check: CheckBox in _asset_tag_checks:
+		if check.button_pressed:
+			selected_tags.append(check.text)
+
 	return {
 		"user_prompt": _prompt_edit.text,
 		"selected_provider": provider_text,
 		"selected_model": model_text,
 		"style_preset": style_text,
 		"two_stage": _two_stage_check.button_pressed,
+		"variation": _variation_check.button_pressed,
 		"seed": int(_seed_spinbox.value),
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
-		"available_asset_tags": [] as Array[String],
+		"available_asset_tags": selected_tags,
 		"project_constraints": "",
 		"api_key": _api_key_edit.text if _api_key_edit != null else "",
 		"host_url": _host_url_edit.text if _host_url_edit != null else "",
@@ -257,6 +269,36 @@ func clear_errors() -> void:
 	for child: Node in _error_container.get_children():
 		child.queue_free()
 	_error_scroll.visible = false
+
+
+## Updates the asset tag browser with tags from the registry.
+## @param tags: All registered tags (sorted).
+## @param registry: The AssetTagRegistry to read category metadata from.
+func update_asset_tags(tags: Array[String], registry: Resource = null) -> void:
+	_asset_tag_checks.clear()
+	for child: Node in _asset_tag_container.get_children():
+		child.queue_free()
+
+	if tags.is_empty():
+		_asset_tag_empty_label = Label.new()
+		_asset_tag_empty_label.text = "No asset tags registered"
+		_asset_tag_empty_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		_asset_tag_container.add_child(_asset_tag_empty_label)
+		return
+
+	for tag: String in tags:
+		var label_text: String = tag
+		if registry != null and registry.has_method("get_entry"):
+			var entry: Dictionary = registry.get_entry(tag)
+			var res_type: String = entry.get("resource_type", "")
+			if not res_type.is_empty():
+				label_text = "%s  [%s]" % [tag, res_type]
+		var check: CheckBox = CheckBox.new()
+		check.text = tag
+		check.tooltip_text = label_text
+		check.button_pressed = false
+		_asset_tag_checks.append(check)
+		_asset_tag_container.add_child(check)
 
 
 # --- Private: signal handlers ---
@@ -391,6 +433,11 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	_two_stage_check.button_pressed = false
 	parent.add_child(_two_stage_check)
 
+	_variation_check = CheckBox.new()
+	_variation_check.text = "Variation Mode"
+	_variation_check.button_pressed = false
+	parent.add_child(_variation_check)
+
 	# Seed row
 	var seed_row: HBoxContainer = HBoxContainer.new()
 	seed_row.add_child(_make_label("Seed:"))
@@ -422,6 +469,37 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	_bounds_z = _make_bounds_spinbox(DEFAULT_BOUNDS_XZ)
 	bounds_row.add_child(_bounds_z)
 	parent.add_child(bounds_row)
+
+
+func _build_asset_tag_section(parent: VBoxContainer) -> void:
+	_asset_tag_section = VBoxContainer.new()
+
+	var toggle_btn: Button = Button.new()
+	toggle_btn.text = "▶ Available Asset Tags"
+	toggle_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle_btn.flat = true
+	_asset_tag_section.add_child(toggle_btn)
+
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size.y = 100
+	scroll.visible = false
+
+	_asset_tag_container = VBoxContainer.new()
+	_asset_tag_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_asset_tag_container)
+	_asset_tag_section.add_child(scroll)
+
+	_asset_tag_empty_label = Label.new()
+	_asset_tag_empty_label.text = "No asset tags registered"
+	_asset_tag_empty_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+	_asset_tag_container.add_child(_asset_tag_empty_label)
+
+	toggle_btn.pressed.connect(func() -> void:
+		scroll.visible = not scroll.visible
+		toggle_btn.text = ("▼ " if scroll.visible else "▶ ") + "Available Asset Tags"
+	)
+
+	parent.add_child(_asset_tag_section)
 
 
 func _build_action_buttons(parent: VBoxContainer) -> void:

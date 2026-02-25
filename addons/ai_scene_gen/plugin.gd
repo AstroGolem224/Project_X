@@ -42,6 +42,7 @@ func _enter_tree() -> void:
 	_setup_provider_list()
 	_connect_signals()
 	_load_settings_to_ui()
+	_sync_asset_tags_to_dock()
 
 	_logger.log_info(LOG_CATEGORY, "%s v%s loaded." % [PLUGIN_NAME, PLUGIN_VERSION])
 
@@ -318,6 +319,16 @@ func _on_export_file_selected(path: String) -> void:
 		_dock.show_errors(errs)
 		return
 	_logger.log_info(LOG_CATEGORY, "SceneSpec exported to %s" % path)
+
+
+func _sync_asset_tags_to_dock() -> void:
+	if _dock == null or _orchestrator == null:
+		return
+	var registry: Resource = _orchestrator.get_asset_registry()
+	if registry == null:
+		return
+	var tags: Array[String] = registry.get_all_tags()
+	_dock.update_asset_tags(tags, registry)
 
 
 func _on_provider_changed(provider_name: String) -> void:
