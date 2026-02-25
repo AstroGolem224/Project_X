@@ -1,5 +1,7 @@
 # AI Scene Generator - Godot Plugin
 
+[![Tests](https://github.com/AstroGolem224/Project_X/actions/workflows/test.yml/badge.svg)](https://github.com/AstroGolem224/Project_X/actions/workflows/test.yml)
+
 ## What It Does
 
 This EditorPlugin lets you type a natural-language prompt and generates a 3D scene directly in the Godot editor. It uses a validated JSON pipeline (SceneSpec) to ensure safety—the AI never executes code, only produces data.
@@ -108,7 +110,22 @@ Register your project assets with tags so the AI can reference them. Unmatched t
 
 ## Testing
 
-The plugin includes a GUT test suite under `tests/`. Install the GUT addon and run the tests from the GUT panel.
+The plugin includes 109 GUT tests across 8 test files under `tests/`.
+
+**Local setup:**
+
+1. Install [GUT](https://github.com/bitwes/Gut) (v9.x) into `addons/gut/`:
+   ```bash
+   git clone --depth 1 https://github.com/bitwes/Gut.git /tmp/gut
+   cp -r /tmp/gut/addons/gut addons/gut
+   ```
+2. Import the project: `godot --headless --import`
+3. Run tests headless:
+   ```bash
+   godot --headless -s addons/gut/gut_cmdln.gd -gexit
+   ```
+
+Tests also run automatically via GitHub Actions on every push/PR to `main`.
 
 ## License
 

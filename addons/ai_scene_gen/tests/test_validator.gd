@@ -151,6 +151,7 @@ func test_T03_empty_json_string_fails() -> void:
 	var result: ValidationResult = _validator.validate_json_string("")
 	assert_false(result.is_valid(), "empty string should fail")
 	assert_true(_has_error_code(result, "SPEC_ERR_PARSE"), "should contain SPEC_ERR_PARSE")
+	assert_engine_error_count(1)
 
 # endregion
 
@@ -336,6 +337,7 @@ func test_malformed_json_object_fails() -> void:
 	var result: ValidationResult = _validator.validate_json_string("{invalid json}")
 	assert_false(result.is_valid(), "malformed JSON should fail")
 	assert_true(_has_error_code(result, "SPEC_ERR_PARSE"))
+	assert_engine_error_count(1)
 
 
 func test_json_array_root_fails() -> void:

@@ -1,0 +1,11 @@
+{
+  "dirs": ["res://addons/ai_scene_gen/tests/"],
+  "include_subdirs": false,
+  "prefix": "test_",
+  "suffix": ".gd",
+  "should_exit": true,
+  "should_maximize": false,
+  "log_level": 1,
+  "double_strategy": "partial",
+  "opacity": 100
+}

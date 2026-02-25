@@ -16,13 +16,14 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS (Phase 1-6 + Prio 1-5)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD (Phase 1-6 + Prio 1-6)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
 Generate-Pipeline laeuft komplett durch (mit MockProvider).
 Two-Stage Generation Mode ist implementiert und getestet.
 Variation Mode und Asset Tag Browser sind implementiert und getestet.
+109 GUT Tests (8 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -82,7 +83,7 @@ Provider-Dropdown Verdrahtung
 - `cancel_generation()` emittiert jetzt `ORCH_ERR_CANCELLED` via `pipeline_failed`
 - Typo-Fix: `ORCH_ERR_ST_type_FAILED` -> `ORCH_ERR_STAGE_FAILED`
 
-### File-Inventar (25 .gd + 2 .json + 2 .md + plugin.cfg + project.godot)
+### File-Inventar (28 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -118,13 +119,19 @@ addons/ai_scene_gen/
     outdoor_clearing.scenespec.json    # Example 1 (Outdoor Clearing mit Baum, Fels, Pfad)
     interior_room.scenespec.json       # Example 2 (Raum mit Waenden und Tisch)
   tests/                               # .gdignore vorhanden (Godot scannt nicht)
-    test_validator.gd                  # 19 Tests (T01-T13, T38, T39)
-    test_primitive_factory.gd          # 14 Tests (T24, T25 + extras)
-    test_prompt_compiler.gd            # 13 Tests (T14-T16 + extras)
-    test_scene_builder.gd             # 9 Tests (T26, T27 + extras)
+    test_validator.gd                  # 19 Tests (T01-T13, T38, T39 + extras)
+    test_primitive_factory.gd          # 16 Tests (T24, T25 + extras)
+    test_prompt_compiler.gd            # 16 Tests (T14-T16 + variation + extras)
+    test_scene_builder.gd              # 7 Tests (T26, T27 + extras)
     test_asset_resolver.gd             # 11 Tests (T21-T23 + extras)
+    test_ollama_provider.gd            # 14 Tests (Provider config, error guards, cancel)
+    test_orchestrator.gd               # 12 Tests (Pipeline, cancel, two-stage, correlation)
+    test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
   docs/
-    README.md                          # Plugin-Quickstart
+    README.md                          # Plugin-Quickstart + CI Badge
+
+.gutconfig.json                        # GUT Test-Framework Konfiguration
+.github/workflows/test.yml            # GitHub Actions CI (Godot 4.6.1 headless + GUT)
 ```
 
 ### class_name Mapping
@@ -235,11 +242,26 @@ Shared (ab Validation):
   - Zeigt "No asset tags registered" wenn Registry leer
 - plugin.gd: `_sync_asset_tags_to_dock()` leitet Registry-Tags an Dock weiter
 
-### Prio 6: CI/CD (NAECHSTER SCHRITT)
+### Prio 6: CI/CD mit GUT + GitHub Actions (✅ ERLEDIGT)
 
-- GUT als Addon installieren
-- Tests via `godot --headless --script addons/gut/gut_cmdln.gd`
-- GitHub Actions Workflow
+- GUT 9.6.0 als Test-Framework (addons/gut/ via git clone, in .gitignore)
+- `.gutconfig.json` im Projekt-Root: Test-Dirs, Prefix, Suffix, should_exit
+- 3 neue Test-Files:
+  - `test_ollama_provider.gd` (14 Tests): Provider-Config, Error Guards, Cancel, Default Models
+  - `test_orchestrator.gd` (12 Tests): State Management, Pipeline mit MockProvider, Cancel, Two-Stage, Correlation ID
+  - `test_dock.gd` (14 Tests): Request Shape, Variation/Two-Stage Flags, Asset Tags, State Transitions
+- 3 Variation-Tests zu `test_prompt_compiler.gd` hinzugefuegt
+- 5 bestehende Tests gefixt (GUT Error-Tracking: `assert_push_error`, `assert_engine_error_count`)
+- `.github/workflows/test.yml`: push + PR auf main, Godot 4.6.1 headless, GUT runner
+- CI Badge in README.md
+- **109 Tests, 322 Asserts, 0.6s Runtime, alle PASS**
+
+### Prio 7: Weitere LLM Provider (NAECHSTER SCHRITT)
+
+- OpenAIProvider: GPT-4o, Chat Completions API, JSON mode
+- AnthropicProvider: Claude, Messages API
+- Plugin-Integration: Provider-Registry, API-Key Persistence
+- Tests fuer beide Provider
 
 ## GDScript Konventionen (STRIKT EINHALTEN)
 
@@ -288,73 +310,69 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 4. ~~Import/Export Buttons im Dock~~ ✅ ERLEDIGT
 5. ~~Two-Stage Mode im Orchestrator~~ ✅ ERLEDIGT
 6. ~~Variation Mode + Asset Tag Browser~~ ✅ ERLEDIGT
-7. **CI/CD (GUT + GitHub Actions)** (naechster logischer Schritt)
+7. ~~CI/CD (GUT + GitHub Actions)~~ ✅ ERLEDIGT
+8. **Weitere LLM Provider (OpenAI, Anthropic)** (naechster logischer Schritt)
 
 ---
 
-## Agenten-Prompt: Prio 6 — CI/CD (GUT + GitHub Actions)
+## Agenten-Prompt: Prio 7 — Weitere LLM Provider (OpenAI + Anthropic)
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 7 (Test Plan) fuer die Test-Specs.
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4 (Module C: LLM Provider) fuer die Provider-Specs.
 
-Prio 1-5 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags).
-Naechster Schritt: Prio 6 — CI/CD mit GUT und GitHub Actions.
+Prio 1-6 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags, CI/CD).
+109 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 7 — OpenAI + Anthropic Provider.
 
-SCHRITT 1: GUT Test-Framework Setup
+SCHRITT 1: OpenAIProvider implementieren
 
-1a. GUT als Addon installieren:
-    - `addons/gut/` als Git-Submodule oder manuell (v9.x)
-    - plugin.cfg fuer GUT einrichten
-    - `.gutconfig.json` im Projekt-Root:
-      - Test-Dirs: `["res://addons/ai_scene_gen/tests/"]`
-      - Prefix: `test_`
-      - Suffix: `.gd`
+1a. `addons/ai_scene_gen/llm/openai_provider.gd`:
+    - class_name OpenAIProvider extends LLMProvider
+    - API: POST https://api.openai.com/v1/chat/completions
+    - needs_api_key() -> true, needs_base_url() -> false
+    - Modelle: gpt-4o, gpt-4o-mini (hardcoded + fetch via /v1/models)
+    - send_request(): compiled_prompt als system message, JSON mode
+    - Error mapping: 401->LLM_ERR_AUTH, 429->LLM_ERR_RATE_LIMIT, 5xx->LLM_ERR_SERVER
+    - Token usage aus response["usage"] extrahieren
 
-1b. Bestehende Tests (5 Files) auf GUT-Syntax migrieren:
-    - `test_validator.gd` (19 Tests)
-    - `test_primitive_factory.gd` (14 Tests)
-    - `test_prompt_compiler.gd` (13 Tests)
-    - `test_scene_builder.gd` (9 Tests)
-    - `test_asset_resolver.gd` (11 Tests)
-    - Jeder Test: `extends GutTest`, `func test_*()`, `assert_*` statt eigener Asserts
-    - Tests muessen headless laufen: kein UI, kein Editor-API
+1b. `addons/ai_scene_gen/llm/anthropic_provider.gd`:
+    - class_name AnthropicProvider extends LLMProvider
+    - API: POST https://api.anthropic.com/v1/messages
+    - Header: x-api-key, anthropic-version: 2023-06-01
+    - needs_api_key() -> true, needs_base_url() -> false
+    - Modelle: claude-sonnet-4-20250514 (hardcoded)
+    - send_request(): system + user message format
+    - Error mapping analog zu OpenAI
 
-1c. Neue Tests fuer Prio 1-5 Features schreiben:
-    - OllamaProvider: Mock-HTTP, error mapping, cancel
-    - Orchestrator: Two-Stage flow, cancel, correlation_id
-    - Dock: get_generation_request() shape, variation flag, asset tags
-    - PromptCompiler: variation suffix injection
+SCHRITT 2: Plugin-Integration
 
-SCHRITT 2: GitHub Actions Workflow
+2a. plugin.gd: Provider-Registry erweitern
+    - OpenAIProvider und AnthropicProvider registrieren
+    - API-Key Persistence via EditorSettings (provider-spezifisch)
+    - Dock: API-Key Feld sichtbar wenn Provider needs_api_key()
 
-2a. `.github/workflows/test.yml`:
-    - Trigger: push + PR auf main
-    - Job: ubuntu-latest
-    - Godot 4.6.1 stable Linux headless download
-    - `godot --headless --script addons/gut/gut_cmdln.gd` ausfuehren
-    - Exit code pruefen
+2b. Dock: Host-URL nur bei Providern mit needs_base_url()
+    - OpenAI/Anthropic: kein Host-URL Feld
+    - Ollama: Host-URL Feld wie bisher
 
-2b. Badge in README.md einbinden
+SCHRITT 3: Tests schreiben
 
-SCHRITT 3: Testen und Committen
+3a. `test_openai_provider.gd`:
+    - Config-Tests (name, api_key, base_url)
+    - Error guards (null http_node, empty model, empty api_key)
+    - Token usage extraction
 
-3a. Lokal testen:
-    - `J:\Godot\Godot_v4.6.1-stable_win64.exe --headless --script addons/gut/gut_cmdln.gd`
-    - Alle Tests muessen PASS sein
+3b. `test_anthropic_provider.gd`:
+    - Analog zu OpenAI tests
 
-3b. HANDOFF.md updaten:
-    - "Prio 6" als erledigt markieren
-    - File-Count aktualisieren
-    - Neuen Agenten-Prompt fuer Prio 7 (weitere Provider) schreiben
-
-3c. Committen und pushen.
-    Commit-Message: "feat: GUT test framework + GitHub Actions CI"
+3c. Lokal testen: Alle 109+ Tests muessen PASS sein
+3d. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
-Tests muessen headless laufen (kein UI-Dependency). .gdignore im tests/
-Ordner NICHT entfernen — GUT findet Tests ueber .gutconfig.json.
+API Keys NIEMALS in Projekt-Dateien — nur EditorSettings.
+Kein eval(), kein load() auf LLM-Output.
 ```
 

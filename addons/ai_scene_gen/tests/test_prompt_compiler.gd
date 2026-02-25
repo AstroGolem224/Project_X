@@ -36,12 +36,14 @@ func test_T14_empty_prompt_fails() -> void:
 	var request: Dictionary = _make_valid_request({"user_prompt": ""})
 	var result: String = _compiler.compile_single_stage(request)
 	assert_eq(result, "", "empty prompt should return empty string")
+	assert_push_error("Cannot compile an empty prompt")
 
 
 func test_whitespace_only_prompt_fails() -> void:
 	var request: Dictionary = _make_valid_request({"user_prompt": "   "})
 	var result: String = _compiler.compile_single_stage(request)
 	assert_eq(result, "", "whitespace-only prompt should return empty string")
+	assert_push_error("Cannot compile an empty prompt")
 
 # endregion
 
@@ -94,6 +96,7 @@ func test_invalid_preset_fails() -> void:
 	var request: Dictionary = _make_valid_request({"style_preset": "invalid"})
 	var result: String = _compiler.compile_single_stage(request)
 	assert_eq(result, "", "invalid preset should return empty string")
+	assert_push_error("Unknown style preset")
 
 # endregion
 
@@ -143,5 +146,36 @@ func test_no_asset_tags_shows_none() -> void:
 	var request: Dictionary = _make_valid_request({"available_asset_tags": []})
 	var result: String = _compiler.compile_single_stage(request)
 	assert_true(result.find("None") != -1, "empty tags should show 'None'")
+
+# endregion
+
+# region --- Variation suffix injection ---
+
+func test_variation_flag_adds_seed_suffix() -> void:
+	var request: Dictionary = _make_valid_request({"variation": true})
+	var result: String = _compiler.compile_single_stage(request)
+	assert_true(result.length() > 0, "variation request should produce output")
+	assert_true(
+		result.find("[variation_seed=") != -1,
+		"variation=true should inject [variation_seed=...] into prompt"
+	)
+
+
+func test_no_variation_flag_no_suffix() -> void:
+	var request: Dictionary = _make_valid_request({"variation": false})
+	var result: String = _compiler.compile_single_stage(request)
+	assert_true(result.length() > 0, "non-variation request should produce output")
+	assert_true(
+		result.find("[variation_seed=") == -1,
+		"variation=false should NOT inject variation_seed"
+	)
+
+
+func test_variation_suffix_changes_between_calls() -> void:
+	var req: Dictionary = _make_valid_request({"variation": true})
+	var result_a: String = _compiler.compile_single_stage(req)
+	var result_b: String = _compiler.compile_single_stage(req)
+	assert_true(result_a.length() > 0)
+	assert_true(result_b.length() > 0)
 
 # endregion

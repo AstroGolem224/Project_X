@@ -17,3 +17,6 @@ desktop.ini
 
 # Backup folder (local iterations)
 Backup/
+
+# GUT test framework (installed locally or via CI)
+addons/gut/
