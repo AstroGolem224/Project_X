@@ -5,7 +5,7 @@
 
 ## Projekt-Ueberblick
 
-**Repo:** https://github.com/AstroGolem224/Project_X.git
+**Repo:** [https://github.com/AstroGolem224/Project_X.git](https://github.com/AstroGolem224/Project_X.git)
 **Branch:** main
 **Workspace:** `c:\Users\matth\OneDrive\Dokumente\GitHub\Project_X`
 **Engine:** Godot 4.6.1 stable, pure GDScript, kein GDExtension
@@ -25,25 +25,31 @@ Generate-Pipeline laeuft komplett durch (mit MockProvider).
 ### Was bisher implementiert wurde
 
 **Phase 1-6 (MVP):**
+
 - Alle 12 Module (A-L) implementiert und verdrahtet
 - Plugin laedt/entlaedt fehlerfrei in Godot 4.6.1
 - 7 Bugs gefixt (@tool auf Type-Scripts, typed Array Safety, null Guards, lokale Transforms)
 
 **Prio 1: Async Pipeline + LLM Provider (✅ ERLEDIGT)**
+
 - `LLMProvider` Basisklasse: `_http_node` Injection (RefCounted kann keine Nodes ownen),
-  `_api_key` Management, `cancel()`, `fetch_available_models()` (async-faehig)
+`_api_key` Management, `cancel()`, `fetch_available_models()` (async-faehig)
 - `OllamaProvider`: async `send_request()` via `await _http_node.request_completed`
-  gegen `localhost:11434/api/generate`, Model-Liste via `/api/tags`,
-  volles Error-Mapping (LLM_ERR_NETWORK/TIMEOUT/AUTH/RATE_LIMIT/SERVER/NON_JSON)
+gegen `localhost:11434/api/generate`, Model-Liste via `/api/tags`,
+volles Error-Mapping (LLM_ERR_NETWORK/TIMEOUT/AUTH/RATE_LIMIT/SERVER/NON_JSON),
+konfigurierbare Base-URL via `set_base_url()` (fuer Remote-Instanzen)
 - `Orchestrator.start_generation()` ist async mit `await` auf LLM-Call,
-  Cancellation-Guard via `_correlation_id` nach jedem await
+Cancellation-Guard via `_correlation_id` nach jedem await
 - `plugin.gd`: HTTPRequest-Node Lifecycle, Provider-Registry (MockProvider + Ollama),
-  dynamisches Provider-Switching mit async Model-Fetch, API-Key Persistence via EditorSettings
+dynamisches Provider-Switching mit async Model-Fetch, API-Key Persistence via EditorSettings
 - Dock: `provider_changed` Signal, API-Key Feld (secret, toggle per Provider),
-  Provider-Dropdown Verdrahtung
+Host-URL Feld (sichtbar wenn Provider `needs_base_url()` meldet),
+Provider-Dropdown Verdrahtung
+- Persistence: `get_provider_url()` / `set_provider_url()` fuer Host-URLs in EditorSettings
 - MockProvider: unveraendert synchron, `await` auf non-Coroutine returned sofort
 
 **Prio 2: EditorUndoRedoManager (✅ ERLEDIGT)**
+
 - `PreviewLayer.apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D)`
 - `_do_apply()` / `_undo_apply()` private Methoden mit `_applied_children: Array[Node]` Tracking
 - `create_action("AI Scene Gen: Apply Preview")` + `add_do_method` / `add_undo_method`
@@ -52,6 +58,7 @@ Generate-Pipeline laeuft komplett durch (mit MockProvider).
 - Plugin uebergibt `get_undo_redo()` bei Apply
 
 **Prio 3: Import/Export UI (✅ ERLEDIGT)**
+
 - Import/Export Buttons im Dock ("Import Spec" / "Export Spec") mit State-Management
 - `EditorFileDialog` (ACCESS_RESOURCES, `*.scenespec.json` Filter)
 - Import-Flow: Dialog -> `persistence.import_spec(path)` -> `orchestrator.rebuild_from_spec(spec, root)`
@@ -77,7 +84,7 @@ addons/ai_scene_gen/
     build_result.gd                    # @tool, BuildResult
     resolved_spec.gd                   # @tool, ResolvedSpec
   llm/
-    llm_provider.gd                    # C: Abstrakte Basisklasse + HTTP/API-Key Infrastruktur
+    llm_provider.gd                    # C: Abstrakte Basisklasse + HTTP/API-Key/Base-URL Infrastruktur
     mock_provider.gd                   # C: Canned-Response Provider (synchron)
     ollama_provider.gd                 # C: Async Ollama Provider (localhost:11434)
   assets/
@@ -89,7 +96,7 @@ addons/ai_scene_gen/
     ai_scene_gen_dock.gd               # A: Komplettes Dock UI (rein programmatisch)
   util/
     logger.gd                          # @tool, AiSceneGenLogger mit 4 Log-Levels + Metrics
-    persistence.gd                     # L: Settings/SceneSpec I/O + API-Key via EditorSettings
+    persistence.gd                     # L: Settings/SceneSpec I/O + API-Key/Host-URL via EditorSettings
   mocks/
     outdoor_clearing.scenespec.json    # Example 1 (Outdoor Clearing mit Baum, Fels, Pfad)
     interior_room.scenespec.json       # Example 2 (Raum mit Waenden und Tisch)
@@ -105,28 +112,30 @@ addons/ai_scene_gen/
 
 ### class_name Mapping
 
-| class_name | File | extends |
-|---|---|---|
-| AiSceneGenPlugin | plugin.gd | EditorPlugin |
-| AiSceneGenDock | ui/ai_scene_gen_dock.gd | Control |
-| AiSceneGenOrchestrator | core/orchestrator.gd | RefCounted |
-| AiSceneGenLogger | util/logger.gd | RefCounted |
-| AiSceneGenPersistence | util/persistence.gd | RefCounted |
-| PromptCompiler | core/prompt_compiler.gd | RefCounted |
-| SceneSpecValidator | core/scene_spec_validator.gd | RefCounted |
-| SceneBuilder | core/scene_builder.gd | RefCounted |
-| PostProcessor | core/post_processor.gd | RefCounted |
-| PreviewLayer | core/preview_layer.gd | RefCounted |
-| LLMProvider | llm/llm_provider.gd | RefCounted |
-| MockProvider | llm/mock_provider.gd | LLMProvider |
-| OllamaProvider | llm/ollama_provider.gd | LLMProvider |
-| AssetTagRegistry | assets/asset_tag_registry.gd | Resource |
-| AssetResolver | assets/asset_resolver.gd | RefCounted |
-| ProceduralPrimitiveFactory | factory/procedural_primitive_factory.gd | RefCounted |
-| LLMResponse | types/llm_response.gd | RefCounted |
-| ValidationResult | types/validation_result.gd | RefCounted |
-| BuildResult | types/build_result.gd | RefCounted |
-| ResolvedSpec | types/resolved_spec.gd | RefCounted |
+
+| class_name                 | File                                    | extends      |
+| -------------------------- | --------------------------------------- | ------------ |
+| AiSceneGenPlugin           | plugin.gd                               | EditorPlugin |
+| AiSceneGenDock             | ui/ai_scene_gen_dock.gd                 | Control      |
+| AiSceneGenOrchestrator     | core/orchestrator.gd                    | RefCounted   |
+| AiSceneGenLogger           | util/logger.gd                          | RefCounted   |
+| AiSceneGenPersistence      | util/persistence.gd                     | RefCounted   |
+| PromptCompiler             | core/prompt_compiler.gd                 | RefCounted   |
+| SceneSpecValidator         | core/scene_spec_validator.gd            | RefCounted   |
+| SceneBuilder               | core/scene_builder.gd                   | RefCounted   |
+| PostProcessor              | core/post_processor.gd                  | RefCounted   |
+| PreviewLayer               | core/preview_layer.gd                   | RefCounted   |
+| LLMProvider                | llm/llm_provider.gd                     | RefCounted   |
+| MockProvider               | llm/mock_provider.gd                    | LLMProvider  |
+| OllamaProvider             | llm/ollama_provider.gd                  | LLMProvider  |
+| AssetTagRegistry           | assets/asset_tag_registry.gd            | Resource     |
+| AssetResolver              | assets/asset_resolver.gd                | RefCounted   |
+| ProceduralPrimitiveFactory | factory/procedural_primitive_factory.gd | RefCounted   |
+| LLMResponse                | types/llm_response.gd                   | RefCounted   |
+| ValidationResult           | types/validation_result.gd              | RefCounted   |
+| BuildResult                | types/build_result.gd                   | RefCounted   |
+| ResolvedSpec               | types/resolved_spec.gd                  | RefCounted   |
+
 
 ### Signal-Verdrahtung (plugin.gd)
 
@@ -159,19 +168,16 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 ## Bekannte Limitierungen (keine Bugs, Design-Grenzen)
 
 1. **Post-Processor nutzt lokale Transforms** — Korrekt fuer flache
-   Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
+  Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
    Nodes waere `global_transform` genauer, geht aber erst nach Tree-Insert.
-
 2. **Undo revertiert nur Tree-Operationen** — Orchestrator/Dock State
-   (IDLE/PREVIEW_READY) wird beim Undo nicht automatisch zurueckgesetzt.
+  (IDLE/PREVIEW_READY) wird beim Undo nicht automatisch zurueckgesetzt.
    Nodes werden korrekt revertiert, aber UI zeigt weiter IDLE.
-
 3. **Shared HTTPRequest** — Ein HTTPRequest-Node fuer alle Provider.
-   Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
+  Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
    verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
-
 4. **Nur Single-Stage Mode** — `compile_plan_stage()` und `compile_spec_stage()`
-   existieren im PromptCompiler, aber der Orchestrator ruft nur
+  existieren im PromptCompiler, aber der Orchestrator ruft nur
    `compile_single_stage()` auf. Two-Stage mit zweitem LLM-Call fehlt.
 
 ## Fehlende Features (nach Architektur-Doc, priorisiert)
@@ -188,11 +194,13 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 zweistufigen LLM-Call machen: erst Plan, dann SceneSpec basierend auf dem Plan.
 
 **Voraussetzungen (bereits implementiert):**
+
 - `PromptCompiler.compile_plan_stage(request: Dictionary) -> String` existiert
 - `PromptCompiler.compile_spec_stage(request: Dictionary, plan_text: String) -> String` existiert
 - Orchestrator ist bereits async mit `await` auf LLM-Calls
 
 **Was zu tun ist:**
+
 - Orchestrator: `start_generation()` erweitern mit Two-Stage Pfad
   - Heuristik: >30 Woerter im Prompt ODER `request["two_stage"] == true` -> Two-Stage
   - Stage 1: `compile_plan_stage(request)` -> `await send_request()` -> plan_text
@@ -222,8 +230,8 @@ zweistufigen LLM-Call machen: erst Plan, dann SceneSpec basierend auf dem Plan.
 - Explizite Typen auf JEDER Variable, Parameter, Return. Keine Inferenz.
 - Typed collections: Array[String], Array[Dictionary], etc.
 - **WICHTIG:** Beim Uebergeben von Arrays an typed Parameter IMMER erst
-  als typed Variable deklarieren (z.B. `var x: Array[String] = ["a"]`),
-  dann uebergeben. Untyped Literale `["a"]` crashen bei Dynamic Dispatch.
+als typed Variable deklarieren (z.B. `var x: Array[String] = ["a"]`),
+dann uebergeben. Untyped Literale `["a"]` crashen bei Dynamic Dispatch.
 - snake_case fuer Funktionen/Variablen, PascalCase fuer Klassen, UPPER_SNAKE_CASE fuer Konstanten
 - _ Prefix fuer private Member
 - Signals mit typed Signature, connect via .connect()
@@ -246,6 +254,7 @@ zweistufigen LLM-Call machen: erst Plan, dann SceneSpec basierend auf dem Plan.
 ## Architektur-Referenz
 
 Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
+
 - Abschnitt 4: Alle 12 Module mit Interfaces, Error Codes, Test Plans
 - Abschnitt 5: SceneSpec JSON Schema v1.0.0 + Beispiele
 - Abschnitt 6: LLM System Instruction Template + Two-Stage Design
@@ -271,7 +280,7 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
-Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext. Danach
+Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext. Danach
 ARCHITECTURE_INTEGRATED.md Abschnitt 6 "Two-Stage vs Single-Stage" (ca. Zeile 1497)
 und Abschnitt 4.D (Prompt Compiler) fuer die Modul-Specs.
 
@@ -311,3 +320,4 @@ Konkret:
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten, besonders
 typed Arrays bei Dynamic Dispatch. Sicherheits-Invarianten niemals brechen.
 ```
+

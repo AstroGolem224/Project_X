@@ -35,6 +35,14 @@ func needs_api_key() -> bool:
 	return false
 
 
+func needs_base_url() -> bool:
+	return true
+
+
+func get_default_base_url() -> String:
+	return DEFAULT_BASE_URL
+
+
 func health_check() -> Dictionary:
 	if _http_node == null:
 		return {"status": "error", "message": "No HTTP node configured"}

@@ -35,6 +35,8 @@ var _seed_random_button: Button
 var _bounds_x: SpinBox
 var _bounds_y: SpinBox
 var _bounds_z: SpinBox
+var _host_url_row: HBoxContainer
+var _host_url_edit: LineEdit
 var _api_key_row: HBoxContainer
 var _api_key_edit: LineEdit
 var _generate_button: Button
@@ -208,7 +210,23 @@ func get_generation_request() -> Dictionary:
 		"available_asset_tags": [] as Array[String],
 		"project_constraints": "",
 		"api_key": _api_key_edit.text,
+		"host_url": _host_url_edit.text,
 	}
+
+
+## Shows or hides the host URL input field.
+func set_host_url_visible(is_visible: bool) -> void:
+	_host_url_row.visible = is_visible
+
+
+## Sets the host URL field text (e.g. from persisted settings).
+func set_host_url(url: String) -> void:
+	_host_url_edit.text = url
+
+
+## Returns the currently entered host URL.
+func get_host_url() -> String:
+	return _host_url_edit.text
 
 
 ## Shows or hides the API key input field.
@@ -310,6 +328,15 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 
 	_provider_dropdown = _add_labeled_option(parent, "Provider:")
 	_model_dropdown = _add_labeled_option(parent, "Model:")
+
+	_host_url_row = HBoxContainer.new()
+	_host_url_row.add_child(_make_label("Host:"))
+	_host_url_edit = LineEdit.new()
+	_host_url_edit.placeholder_text = "http://localhost:11434"
+	_host_url_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_host_url_row.add_child(_host_url_edit)
+	parent.add_child(_host_url_row)
+	_host_url_row.visible = false
 
 	_api_key_row = HBoxContainer.new()
 	_api_key_row.add_child(_make_label("API Key:"))

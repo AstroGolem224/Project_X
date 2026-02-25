@@ -31,14 +31,28 @@ This EditorPlugin lets you type a natural-language prompt and generates a 3D sce
 
 ## Providers
 
-| Provider | Setup | API Key |
-|----------|-------|---------|
-| **MockProvider** | None (offline, ships with plugin) | No |
-| **Ollama** | Install [Ollama](https://ollama.com), run a model | No |
+| Provider | Setup | API Key | Host URL |
+|----------|-------|---------|----------|
+| **MockProvider** | None (offline, ships with plugin) | No | — |
+| **Ollama** | Install [Ollama](https://ollama.com), run a model | No | Configurable |
 
 Select the provider from the dropdown. For Ollama, models are fetched
 automatically from your local instance. The model dropdown updates
 when you switch providers.
+
+### Remote Ollama (e.g. another machine on your LAN)
+
+By default Ollama connects to `http://localhost:11434`. To use a remote
+instance:
+
+1. On the remote machine, start Ollama bound to all interfaces:
+   ```bash
+   OLLAMA_HOST=0.0.0.0 ollama serve
+   ```
+2. Find the remote machine's LAN IP (e.g. `192.168.1.42`)
+3. In the plugin dock, select Ollama as provider
+4. Enter `http://192.168.1.42:11434` in the **Host** field
+5. The URL is persisted in Godot's EditorSettings — no need to re-enter
 
 ## Import / Export
 
@@ -82,6 +96,8 @@ The plugin uses a JSON format called SceneSpec (v1.0.0) as the bridge between AI
 
 ## Configuration
 
+- **Host URL**: Base URL for providers that support it (e.g. Ollama). Stored per-provider in EditorSettings.
+- **API Key**: For providers that require authentication. Stored securely in EditorSettings.
 - **Seed**: Integer for deterministic generation. Same seed = same scene.
 - **Bounds**: Scene bounding box in meters (X, Y, Z)
 - **Max nodes**: Configurable limit (default 256, max 1024)

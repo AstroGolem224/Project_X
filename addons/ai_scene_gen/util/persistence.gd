@@ -212,6 +212,30 @@ func set_api_key(provider: String, key: String) -> void:
 	settings.set_setting(key_name, key)
 
 
+## Returns stored provider URL from EditorSettings. Returns "" if unset.
+func get_provider_url(provider: String) -> String:
+	if _editor_interface == null:
+		return ""
+	var settings: EditorSettings = _editor_interface.get_editor_settings()
+	if settings == null:
+		return ""
+	var key_name: String = "ai_scene_gen/provider_urls/" + provider
+	if not settings.has_setting(key_name):
+		return ""
+	return str(settings.get_setting(key_name))
+
+
+## Stores provider URL in EditorSettings. No-op if EditorInterface unavailable.
+func set_provider_url(provider: String, url: String) -> void:
+	if _editor_interface == null:
+		return
+	var settings: EditorSettings = _editor_interface.get_editor_settings()
+	if settings == null:
+		return
+	var key_name: String = "ai_scene_gen/provider_urls/" + provider
+	settings.set_setting(key_name, url)
+
+
 ## Injects EditorInterface for API key get/set. Call from plugin after construction.
 func set_editor_interface(editor_interface: Object) -> void:
 	_editor_interface = editor_interface

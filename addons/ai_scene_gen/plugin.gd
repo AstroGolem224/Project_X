@@ -170,8 +170,12 @@ func _on_generate_requested(request: Dictionary) -> void:
 
 	var provider_name: String = request.get("selected_provider", "") as String
 	var api_key: String = request.get("api_key", "") as String
+	var host_url: String = request.get("host_url", "") as String
 	var provider: Variant = _providers.get(provider_name)
 	if provider != null:
+		if provider.needs_base_url() and not host_url.is_empty():
+			provider.set_base_url(host_url)
+			_persistence.set_provider_url(provider_name, host_url)
 		if provider.needs_api_key():
 			provider.set_api_key(api_key)
 			_persistence.set_api_key(provider_name, api_key)
@@ -326,6 +330,15 @@ func _on_provider_changed(provider_name: String) -> void:
 		return
 
 	_orchestrator.set_llm_provider(provider)
+
+	var show_url: bool = provider.needs_base_url()
+	_dock.set_host_url_visible(show_url)
+	if show_url:
+		var stored_url: String = _persistence.get_provider_url(provider_name)
+		if stored_url.is_empty():
+			stored_url = provider.get_default_base_url()
+		_dock.set_host_url(stored_url)
+		provider.set_base_url(stored_url)
 
 	var show_key: bool = provider.needs_api_key()
 	_dock.set_api_key_visible(show_key)

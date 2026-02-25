@@ -39,6 +39,21 @@ func health_check() -> Dictionary:
 	return {"status": "not_implemented", "message": "Provider does not implement health_check"}
 
 
+## Whether this provider requires a configurable base URL.
+func needs_base_url() -> bool:
+	return false
+
+
+## Returns the default base URL for this provider (empty if not applicable).
+func get_default_base_url() -> String:
+	return ""
+
+
+## Sets the provider base URL. Override in subclasses that support it.
+func set_base_url(_url: String) -> void:
+	pass
+
+
 ## Whether this provider requires an API key.
 func needs_api_key() -> bool:
 	return false
