@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP FUNKTIONSFAEHIG (Phase 1-6 + Bugfix-Runde)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT (Phase 1-6 + Prio 1-3)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -75,8 +75,9 @@ addons/ai_scene_gen/
     build_result.gd                    # @tool, BuildResult
     resolved_spec.gd                   # @tool, ResolvedSpec
   llm/
-    llm_provider.gd                    # C: Abstrakte Basisklasse (KEIN preload mehr)
-    mock_provider.gd                   # C: Canned-Response Provider
+    llm_provider.gd                    # C: Abstrakte Basisklasse + HTTP/API-Key Infrastruktur
+    mock_provider.gd                   # C: Canned-Response Provider (synchron)
+    ollama_provider.gd                 # C: Async Ollama Provider (localhost:11434)
   assets/
     asset_tag_registry.gd              # F: Tag-Registry (extends Resource, @export)
     asset_resolver.gd                  # F: Tag-Aufloesung mit Fallback
@@ -116,6 +117,7 @@ addons/ai_scene_gen/
 | PreviewLayer | core/preview_layer.gd | RefCounted |
 | LLMProvider | llm/llm_provider.gd | RefCounted |
 | MockProvider | llm/mock_provider.gd | LLMProvider |
+| OllamaProvider | llm/ollama_provider.gd | LLMProvider |
 | AssetTagRegistry | assets/asset_tag_registry.gd | Resource |
 | AssetResolver | assets/asset_resolver.gd | RefCounted |
 | ProceduralPrimitiveFactory | factory/procedural_primitive_factory.gd | RefCounted |
@@ -151,16 +153,14 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 
 ## Bekannte Limitierungen (keine Bugs, aber Design-Grenzen)
 
-1. **Pipeline ist synchron** — `start_generation()` blockiert den Editor-Thread.
-   Mit MockProvider kein Problem (<20ms), aber echte HTTP-Calls werden den
-   Editor einfrieren. MUSS async werden bevor echte LLM Provider kommen.
+1. ~~**Pipeline ist synchron**~~ ✅ GELOEST — `start_generation()` ist jetzt async
+   mit `await` auf LLM-Calls. Cancellation-Guard via Correlation-ID.
 
-2. **Kein Undo/Redo** — `apply_to_scene()` macht direktes Reparenting.
-   `EditorUndoRedoManager` fehlt komplett.
+2. ~~**Kein Undo/Redo**~~ ✅ GELOEST — `apply_to_scene()` nutzt
+   `EditorUndoRedoManager` mit `_do_apply`/`_undo_apply`. Ctrl+Z revertiert Apply.
 
-3. **Keine Import/Export UI** — Signals existieren (`import_requested`/
-   `export_requested`), aber keine Buttons im Dock. `AiSceneGenPersistence`
-   hat `export_spec()`/`import_spec()` bereits implementiert.
+3. ~~**Keine Import/Export UI**~~ ✅ GELOEST — Import/Export Buttons im Dock,
+   `EditorFileDialog` mit `.scenespec.json` Filter, voll verdrahtet mit Persistence.
 
 4. **Post-Processor nutzt lokale Transforms** — Korrekt fuer flache
    Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
@@ -193,18 +193,20 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
   - `AiSceneGenPersistence` hat `get_api_key()`/`set_api_key()` schon,
     braucht `set_editor_interface()` Aufruf von plugin.gd
 
-### Prio 2: EditorUndoRedoManager
+### ~~Prio 2: EditorUndoRedoManager~~ ✅ ERLEDIGT
 
-- `PreviewLayer.apply_to_scene()` bekommt `undo_redo: EditorUndoRedoManager` param
+- `PreviewLayer.apply_to_scene(undo_redo, scene_root)` mit vollstaendigem Undo/Redo
+- `_do_apply()` / `_undo_apply()` private Methoden, `_applied_children` Tracking
 - `plugin.gd` uebergibt `get_undo_redo()` bei apply
-- `create_action("AI Scene Gen: Apply")` -> `add_do_method`/`add_undo_method`
+- Null-Guard: ohne UndoRedoManager = direktes Apply (Fallback)
 
-### Prio 3: Import/Export UI
+### ~~Prio 3: Import/Export UI~~ ✅ ERLEDIGT
 
-- 2 Buttons im Dock: "Import SceneSpec" / "Export SceneSpec"
-- FileDialog fuer Pfad-Auswahl (`.scenespec.json` Filter)
-- Import: `persistence.import_spec()` -> `orchestrator.rebuild_from_spec()`
-- Export: `persistence.export_spec(orchestrator.get_last_spec())`
+- Import/Export Buttons im Dock mit State-Management
+- `EditorFileDialog` (ACCESS_RESOURCES, `.scenespec.json` Filter)
+- Import: `persistence.import_spec(path)` -> `orchestrator.rebuild_from_spec(spec, root)`
+- Export: `persistence.export_spec(last_spec, path)` mit Fehlerhandling
+- Dock Signals: `import_requested` / `export_requested` -> Plugin handlers
 
 ### Prio 4: Two-Stage Mode
 
@@ -265,7 +267,9 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 ## Empfohlene naechste Schritte
 
 1. ~~Godot oeffnen, Plugin testen, Bugs fixen~~ ✅ ERLEDIGT
-2. **Async Pipeline + Ollama Provider** (naechster logischer Schritt)
-3. EditorUndoRedoManager in Preview Layer
-4. Import/Export Buttons im Dock
-5. Two-Stage Mode im Orchestrator
+2. ~~Async Pipeline + Ollama Provider~~ ✅ ERLEDIGT
+3. ~~EditorUndoRedoManager in Preview Layer~~ ✅ ERLEDIGT
+4. ~~Import/Export Buttons im Dock~~ ✅ ERLEDIGT
+5. **Two-Stage Mode im Orchestrator** (naechster logischer Schritt)
+6. Variation Mode + Asset Tag Browser
+7. CI/CD (GUT + GitHub Actions)

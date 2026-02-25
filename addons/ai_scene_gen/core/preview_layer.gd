@@ -15,6 +15,7 @@ const PREVIEW_ERR_NOT_ACTIVE: String = "PREVIEW_ERR_NOT_ACTIVE"
 var _logger: RefCounted = null
 var _preview_root: Node3D = null
 var _is_active: bool = false
+var _applied_children: Array[Node] = []
 
 
 func _init(logger: RefCounted = null) -> void:
@@ -45,35 +46,68 @@ func show_preview(built_root: Node3D, scene_root: Node3D) -> Dictionary:
 
 
 ## Reparents preview children to scene_root and removes _AIPreviewRoot.
-## TODO Phase 5: Add undo_redo: EditorUndoRedoManager param; Orchestrator will pass it for full undo support.
+## Uses EditorUndoRedoManager for full undo/redo support when available.
+## @param undo_redo: EditorUndoRedoManager from plugin (null = direct apply without undo).
 ## @param scene_root: The active editor scene root.
 ## @return Empty {} on success, error dict on failure.
-func apply_to_scene(scene_root: Node3D) -> Dictionary:
+func apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> Dictionary:
 	if not _is_active or _preview_root == null:
 		return _make_error(PREVIEW_ERR_NOT_ACTIVE, "No preview is active.", "Generate a scene first.")
 
 	if scene_root == null:
 		return _make_error(PREVIEW_ERR_NO_SCENE, "No scene is open. Open or create a scene first.", "Open or create a scene in the editor.")
 
+	if undo_redo == null:
+		_do_apply(scene_root)
+		return {}
+
+	undo_redo.create_action("AI Scene Gen: Apply Preview")
+	undo_redo.add_do_method(_do_apply.bind(scene_root))
+	undo_redo.add_undo_method(_undo_apply.bind(scene_root))
+	undo_redo.add_do_reference(_preview_root)
+	undo_redo.add_undo_reference(_preview_root)
+	for i: int in range(_preview_root.get_child_count()):
+		var child: Node = _preview_root.get_child(i)
+		undo_redo.add_do_reference(child)
+		undo_redo.add_undo_reference(child)
+	undo_redo.commit_action()
+
+	return {}
+
+
+func _do_apply(scene_root: Node3D) -> void:
+	if _preview_root == null:
+		return
+	_applied_children.clear()
 	var children: Array[Node] = []
 	for i: int in range(_preview_root.get_child_count()):
 		children.append(_preview_root.get_child(i))
-
 	for child: Node in children:
 		_preview_root.remove_child(child)
 		scene_root.add_child(child)
 		_set_owner_recursive(child, scene_root)
-
-	var parent: Node = _preview_root.get_parent()
-	if parent != null:
-		parent.remove_child(_preview_root)
-	_preview_root.queue_free()
-
-	_preview_root = null
+		_applied_children.append(child)
+	if _preview_root.get_parent() != null:
+		_preview_root.get_parent().remove_child(_preview_root)
 	_is_active = false
-
 	_log("info", "preview_applied")
-	return {}
+
+
+func _undo_apply(scene_root: Node3D) -> void:
+	if _preview_root == null or scene_root == null:
+		return
+	scene_root.add_child(_preview_root)
+	_set_owner_recursive(_preview_root, scene_root)
+	for child: Node in _applied_children:
+		if not is_instance_valid(child):
+			continue
+		if child.get_parent() != null:
+			child.get_parent().remove_child(child)
+		_preview_root.add_child(child)
+		_set_owner_recursive(child, scene_root)
+	_applied_children.clear()
+	_is_active = true
+	_log("info", "preview_apply_undone")
 
 
 ## Removes the preview root and all its children without applying.

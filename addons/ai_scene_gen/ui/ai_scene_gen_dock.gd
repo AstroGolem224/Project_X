@@ -40,6 +40,8 @@ var _api_key_edit: LineEdit
 var _generate_button: Button
 var _apply_button: Button
 var _discard_button: Button
+var _import_button: Button
+var _export_button: Button
 var _status_label: Label
 var _progress_bar: ProgressBar
 var _error_container: VBoxContainer
@@ -59,12 +61,15 @@ func _ready() -> void:
 	_build_prompt_section(root_vbox)
 	_build_settings_section(root_vbox)
 	_build_action_buttons(root_vbox)
+	_build_io_buttons(root_vbox)
 	_build_status_section(root_vbox)
 	_build_error_section(root_vbox)
 
 	_generate_button.pressed.connect(_on_generate_pressed)
 	_apply_button.pressed.connect(_on_apply_pressed)
 	_discard_button.pressed.connect(_on_discard_pressed)
+	_import_button.pressed.connect(_on_import_pressed)
+	_export_button.pressed.connect(_on_export_pressed)
 	_seed_random_button.pressed.connect(_on_random_seed_pressed)
 	_provider_dropdown.item_selected.connect(_on_provider_selected)
 
@@ -82,24 +87,32 @@ func set_state(new_state: int) -> void:
 			_generate_button.disabled = false
 			_apply_button.disabled = true
 			_discard_button.disabled = true
+			_import_button.disabled = false
+			_export_button.disabled = false
 			_progress_bar.visible = false
 			_status_label.text = "Ready"
 		DockState.GENERATING:
 			_generate_button.disabled = true
 			_apply_button.disabled = true
 			_discard_button.disabled = true
+			_import_button.disabled = true
+			_export_button.disabled = true
 			_progress_bar.visible = true
 			_status_label.text = "Generating…"
 		DockState.PREVIEW_READY:
 			_generate_button.disabled = true
 			_apply_button.disabled = false
 			_discard_button.disabled = false
+			_import_button.disabled = true
+			_export_button.disabled = false
 			_progress_bar.visible = false
 			_status_label.text = "Preview ready — apply or discard."
 		DockState.ERROR:
 			_generate_button.disabled = false
 			_apply_button.disabled = true
 			_discard_button.disabled = true
+			_import_button.disabled = false
+			_export_button.disabled = false
 			_progress_bar.visible = false
 			_status_label.text = "Errors occurred."
 
@@ -257,6 +270,14 @@ func _on_provider_selected(index: int) -> void:
 	provider_changed.emit(provider_name)
 
 
+func _on_import_pressed() -> void:
+	import_requested.emit("")
+
+
+func _on_export_pressed() -> void:
+	export_requested.emit("")
+
+
 # --- Private: UI builders ---
 
 
@@ -360,6 +381,20 @@ func _build_action_buttons(parent: VBoxContainer) -> void:
 	_discard_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action_row.add_child(_discard_button)
 	parent.add_child(action_row)
+
+
+func _build_io_buttons(parent: VBoxContainer) -> void:
+	var io_row: HBoxContainer = HBoxContainer.new()
+	_import_button = Button.new()
+	_import_button.text = "Import Spec"
+	_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	io_row.add_child(_import_button)
+
+	_export_button = Button.new()
+	_export_button.text = "Export Spec"
+	_export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	io_row.add_child(_export_button)
+	parent.add_child(io_row)
 
 
 func _build_status_section(parent: VBoxContainer) -> void:

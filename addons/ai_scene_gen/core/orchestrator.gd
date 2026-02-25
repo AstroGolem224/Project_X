@@ -240,14 +240,15 @@ func cancel_generation() -> void:
 
 
 ## Applies the current preview into the scene tree permanently.
+## @param undo_redo: EditorUndoRedoManager for undo support (null = direct apply).
 ## @param scene_root: The active editor scene root.
-func apply_preview(scene_root: Node3D) -> void:
+func apply_preview(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> void:
 	if _state != PipelineState.PREVIEW_READY:
 		_emit_error("ORCH_ERR_STAGE_FAILED", "Cannot apply: no preview active.")
 		return
 
 	_change_state(PipelineState.APPLYING)
-	var err: Dictionary = _preview_layer.apply_to_scene(scene_root)
+	var err: Dictionary = _preview_layer.apply_to_scene(undo_redo, scene_root)
 
 	if not err.is_empty():
 		_fail_pipeline(

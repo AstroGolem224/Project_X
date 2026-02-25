@@ -14,6 +14,8 @@ var _logger: RefCounted = null
 var _http_request: HTTPRequest = null
 var _providers: Dictionary = {}
 var _provider_switch_id: int = 0
+var _import_dialog: EditorFileDialog = null
+var _export_dialog: EditorFileDialog = null
 
 
 func _enter_tree() -> void:
@@ -30,6 +32,8 @@ func _enter_tree() -> void:
 
 	_orchestrator = AiSceneGenOrchestrator.new(_logger)
 	_register_providers()
+
+	_setup_file_dialogs()
 
 	_dock = AiSceneGenDock.new()
 	_dock.name = "AISceneGen"
@@ -48,6 +52,12 @@ func _exit_tree() -> void:
 		remove_control_from_docks(_dock)
 		_dock.queue_free()
 		_dock = null
+	if _import_dialog != null:
+		_import_dialog.queue_free()
+		_import_dialog = null
+	if _export_dialog != null:
+		_export_dialog.queue_free()
+		_export_dialog = null
 	if _http_request != null:
 		_http_request.cancel_request()
 		_http_request.queue_free()
@@ -100,6 +110,8 @@ func _connect_signals() -> void:
 	_dock.apply_requested.connect(_on_apply_requested)
 	_dock.discard_requested.connect(_on_discard_requested)
 	_dock.provider_changed.connect(_on_provider_changed)
+	_dock.import_requested.connect(_on_import_requested)
+	_dock.export_requested.connect(_on_export_requested)
 	_orchestrator.pipeline_state_changed.connect(_on_pipeline_state_changed)
 	_orchestrator.pipeline_progress.connect(_on_pipeline_progress)
 	_orchestrator.pipeline_completed.connect(_on_pipeline_completed)
@@ -116,6 +128,10 @@ func _disconnect_signals() -> void:
 			_dock.discard_requested.disconnect(_on_discard_requested)
 		if _dock.provider_changed.is_connected(_on_provider_changed):
 			_dock.provider_changed.disconnect(_on_provider_changed)
+		if _dock.import_requested.is_connected(_on_import_requested):
+			_dock.import_requested.disconnect(_on_import_requested)
+		if _dock.export_requested.is_connected(_on_export_requested):
+			_dock.export_requested.disconnect(_on_export_requested)
 	if _orchestrator != null:
 		if _orchestrator.pipeline_state_changed.is_connected(_on_pipeline_state_changed):
 			_orchestrator.pipeline_state_changed.disconnect(_on_pipeline_state_changed)
@@ -171,7 +187,7 @@ func _on_apply_requested() -> void:
 	if raw_root == null or not raw_root is Node3D:
 		return
 	var scene_root: Node3D = raw_root as Node3D
-	_orchestrator.apply_preview(scene_root)
+	_orchestrator.apply_preview(get_undo_redo(), scene_root)
 	_dock.set_state(AiSceneGenDock.DockState.IDLE)
 	_dock.clear_errors()
 
@@ -207,6 +223,97 @@ func _on_pipeline_completed(_spec: Dictionary) -> void:
 func _on_pipeline_failed(errors: Array[Dictionary]) -> void:
 	if _dock != null:
 		_dock.show_errors(errors)
+
+
+func _setup_file_dialogs() -> void:
+	_import_dialog = EditorFileDialog.new()
+	_import_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
+	_import_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	_import_dialog.add_filter("*.scenespec.json", "SceneSpec JSON")
+	_import_dialog.title = "Import SceneSpec"
+	_import_dialog.file_selected.connect(_on_import_file_selected)
+	add_child(_import_dialog)
+
+	_export_dialog = EditorFileDialog.new()
+	_export_dialog.file_mode = EditorFileDialog.FILE_MODE_SAVE_FILE
+	_export_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	_export_dialog.add_filter("*.scenespec.json", "SceneSpec JSON")
+	_export_dialog.title = "Export SceneSpec"
+	_export_dialog.file_selected.connect(_on_export_file_selected)
+	add_child(_export_dialog)
+
+
+func _on_import_requested(_path: String) -> void:
+	if _import_dialog != null:
+		_import_dialog.popup_centered_ratio(0.6)
+
+
+func _on_export_requested(_path: String) -> void:
+	var spec: Dictionary = _orchestrator.get_last_spec()
+	if spec.is_empty():
+		var errs: Array[Dictionary] = [{
+			"code": "EXPORT_ERR_NO_SPEC",
+			"message": "No SceneSpec to export. Generate a scene first.",
+			"path": "",
+			"severity": "error",
+			"stage": "ui",
+			"fix_hint": "Generate a scene before exporting.",
+		}]
+		_dock.show_errors(errs)
+		return
+	if _export_dialog != null:
+		_export_dialog.popup_centered_ratio(0.6)
+
+
+func _on_import_file_selected(path: String) -> void:
+	var spec: Dictionary = _persistence.import_spec(path)
+	if spec.is_empty():
+		var errs: Array[Dictionary] = [{
+			"code": "IMPORT_ERR_FAILED",
+			"message": "Failed to import SceneSpec from '%s'." % path,
+			"path": path,
+			"severity": "error",
+			"stage": "ui",
+			"fix_hint": "Check that the file exists, is valid JSON, and has spec_version 1.0.0.",
+		}]
+		_dock.show_errors(errs)
+		return
+
+	var raw_root: Node = get_editor_interface().get_edited_scene_root()
+	if raw_root == null or not raw_root is Node3D:
+		var errs: Array[Dictionary] = [{
+			"code": "UI_ERR_NO_SCENE",
+			"message": "No 3D scene open. Open or create a 3D scene before importing.",
+			"path": "",
+			"severity": "error",
+			"stage": "ui",
+			"fix_hint": "Open a scene with a Node3D root.",
+		}]
+		_dock.show_errors(errs)
+		return
+
+	var scene_root: Node3D = raw_root as Node3D
+	_dock.set_state(AiSceneGenDock.DockState.GENERATING)
+	_orchestrator.rebuild_from_spec(spec, scene_root)
+
+
+func _on_export_file_selected(path: String) -> void:
+	var spec: Dictionary = _orchestrator.get_last_spec()
+	if spec.is_empty():
+		return
+	var result: int = _persistence.export_spec(spec, path)
+	if result != OK:
+		var errs: Array[Dictionary] = [{
+			"code": "EXPORT_ERR_WRITE",
+			"message": "Failed to write SceneSpec to '%s'." % path,
+			"path": path,
+			"severity": "error",
+			"stage": "ui",
+			"fix_hint": "Check file permissions and that the path starts with res://.",
+		}]
+		_dock.show_errors(errs)
+		return
+	_logger.log_info(LOG_CATEGORY, "SceneSpec exported to %s" % path)
 
 
 func _on_provider_changed(provider_name: String) -> void:
