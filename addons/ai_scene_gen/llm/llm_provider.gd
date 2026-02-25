@@ -3,11 +3,11 @@ class_name LLMProvider
 extends RefCounted
 
 ## Abstract base class for LLM providers.
-
-const _LLMResponseScript: GDScript = preload("res://addons/ai_scene_gen/types/llm_response.gd")
 ## Subclasses override virtual methods to implement concrete providers (OpenAI, Anthropic, mock, etc.).
 
 var _logger: RefCounted = null
+var _http_node: HTTPRequest = null
+var _api_key: String = ""
 
 
 func _init(logger: RefCounted = null) -> void:
@@ -39,14 +39,47 @@ func health_check() -> Dictionary:
 	return {"status": "not_implemented", "message": "Provider does not implement health_check"}
 
 
+## Whether this provider requires an API key.
+func needs_api_key() -> bool:
+	return false
+
+
+## Sets the API key for providers that require one.
+func set_api_key(key: String) -> void:
+	_api_key = key
+
+
+## Returns the stored API key.
+func get_api_key() -> String:
+	return _api_key
+
+
+## Injects an HTTPRequest node owned by the plugin (RefCounted cannot own Nodes).
+func set_http_node(node: HTTPRequest) -> void:
+	_http_node = node
+
+
+## Cancels any in-flight HTTP request. Override for custom cancel logic.
+func cancel() -> void:
+	if _http_node != null:
+		_http_node.cancel_request()
+
+
+## Fetches available models asynchronously (override for HTTP-based providers).
+## Default implementation returns get_available_models() synchronously.
+func fetch_available_models() -> Array[String]:
+	return get_available_models()
+
+
 ## Sends a prompt to the LLM and returns the response.
+## Subclasses may use await internally; callers should always await this method.
 ## @param compiled_prompt: Full prompt string to send.
 ## @param model: Model identifier.
 ## @param temperature: Sampling temperature (0.0–2.0).
 ## @param seed: Optional seed for determinism.
 ## @return LLMResponse (success or failure).
 func send_request(_compiled_prompt: String, _model: String, _temperature: float, _seed: int) -> LLMResponse:
-	return _LLMResponseScript.create_failure("LLM_ERR_NOT_CONFIGURED", "Provider not implemented", 0) as LLMResponse
+	return LLMResponse.create_failure("LLM_ERR_NOT_CONFIGURED", "Provider not implemented", 0)
 
 
 ## Logs a message via the configured logger.

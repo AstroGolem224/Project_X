@@ -50,10 +50,10 @@ func send_request(_compiled_prompt: String, model: String, _temperature: float, 
 
 	var json_content: Variant = _available_mocks.get(mock_key)
 	if json_content == null or not (json_content is String):
-		return _LLMResponseScript.create_failure("LLM_ERR_NOT_CONFIGURED", "Mock file not found", 0) as LLMResponse
+		return LLMResponse.create_failure("LLM_ERR_NOT_CONFIGURED", "Mock file not found", 0)
 
 	var token_usage: Dictionary = {"prompt_tokens": 500, "completion_tokens": 1000}
-	return _LLMResponseScript.create_success(json_content as String, 50, token_usage)
+	return LLMResponse.create_success(json_content as String, 50, token_usage)
 
 
 func _load_mocks() -> void:

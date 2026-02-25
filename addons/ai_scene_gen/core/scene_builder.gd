@@ -221,7 +221,7 @@ func _build_node(node: Dictionary, parent: Node3D, depth: int, max_depth: int) -
 
 	if instance == null and (node.get("_fallback", false) as bool or not node.has("_resolved_path")):
 		if node.has("_fallback_shape") and _primitive_factory != null:
-			var fb_shape: String = node["_fallback_shape"] as String
+			var fb_shape: String = str(node["_fallback_shape"])
 			var fb_scale: Array = node.get("_fallback_scale", [1, 1, 1]) as Array
 			var fb_color: Array = node.get("_fallback_color", [0.5, 0.5, 0.5]) as Array
 			var fb_size: Vector3 = _array_to_vector3(fb_scale)
@@ -230,9 +230,9 @@ func _build_node(node: Dictionary, parent: Node3D, depth: int, max_depth: int) -
 			)
 			if instance != null:
 				_triangle_count += _primitive_factory.get_triangle_count(fb_shape, fb_size)
-		elif node.has("primitive_shape") and _primitive_factory != null:
-			var shape: String = node["primitive_shape"] as String
-			if shape != null and shape != "":
+		elif node.has("primitive_shape") and node["primitive_shape"] != null and _primitive_factory != null:
+			var shape: String = str(node["primitive_shape"])
+			if shape != "":
 				var size: Vector3 = _array_to_vector3(node.get("scale", [1, 1, 1]) as Array)
 				var mat: Dictionary = node.get("material", {}) as Dictionary
 				var albedo: Array = mat.get("albedo", [0.5, 0.5, 0.5]) as Array

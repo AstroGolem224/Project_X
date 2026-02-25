@@ -267,7 +267,9 @@ class CameraFramingPass extends PostProcessorPass:
 			))
 
 		camera.position = center + Vector3(0.0, aabb_size.y * 0.5, distance)
-		camera.look_at(center)
+		var forward: Vector3 = (center - camera.position).normalized()
+		if not forward.is_equal_approx(Vector3.ZERO):
+			camera.basis = Basis.looking_at(forward)
 		return warnings
 
 	func _find_camera(root: Node3D) -> Camera3D:
@@ -301,7 +303,7 @@ class CameraFramingPass extends PostProcessorPass:
 		if node is MeshInstance3D:
 			var mi: MeshInstance3D = node as MeshInstance3D
 			if mi.mesh != null:
-				return mi.global_transform * mi.mesh.get_aabb()
+				return mi.transform * mi.mesh.get_aabb()
 		var pos: Vector3 = node.position
 		var half: Vector3 = node.scale * 0.5
 		return AABB(pos - half, node.scale)
@@ -346,7 +348,7 @@ class CollisionCheckPass extends PostProcessorPass:
 
 	func _approx_aabb(node: MeshInstance3D) -> AABB:
 		if node.mesh != null:
-			return node.global_transform * node.mesh.get_aabb()
+			return node.transform * node.mesh.get_aabb()
 		var half: Vector3 = node.scale * 0.5
 		return AABB(node.position - half, node.scale)
 

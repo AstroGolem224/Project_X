@@ -8,6 +8,7 @@ signal apply_requested()
 signal discard_requested()
 signal import_requested(path: String)
 signal export_requested(path: String)
+signal provider_changed(provider_name: String)
 
 # --- Enums / Constants ---
 
@@ -34,6 +35,8 @@ var _seed_random_button: Button
 var _bounds_x: SpinBox
 var _bounds_y: SpinBox
 var _bounds_z: SpinBox
+var _api_key_row: HBoxContainer
+var _api_key_edit: LineEdit
 var _generate_button: Button
 var _apply_button: Button
 var _discard_button: Button
@@ -63,6 +66,7 @@ func _ready() -> void:
 	_apply_button.pressed.connect(_on_apply_pressed)
 	_discard_button.pressed.connect(_on_discard_pressed)
 	_seed_random_button.pressed.connect(_on_random_seed_pressed)
+	_provider_dropdown.item_selected.connect(_on_provider_selected)
 
 	set_state(DockState.IDLE)
 
@@ -190,7 +194,23 @@ func get_generation_request() -> Dictionary:
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
 		"available_asset_tags": [] as Array[String],
 		"project_constraints": "",
+		"api_key": _api_key_edit.text,
 	}
+
+
+## Shows or hides the API key input field.
+func set_api_key_visible(is_visible: bool) -> void:
+	_api_key_row.visible = is_visible
+
+
+## Sets the API key field text (e.g. from persisted settings).
+func set_api_key(key: String) -> void:
+	_api_key_edit.text = key
+
+
+## Returns the currently entered API key.
+func get_api_key() -> String:
+	return _api_key_edit.text
 
 
 ## Remove all errors and hide the error panel.
@@ -205,12 +225,13 @@ func clear_errors() -> void:
 
 func _on_generate_pressed() -> void:
 	if _prompt_edit.text.strip_edges() == "":
-		show_errors([{
+		var errs: Array[Dictionary] = [{
 			"severity": "error",
 			"code": "EMPTY_PROMPT",
 			"message": "Scene description cannot be empty.",
 			"fix_hint": "Enter a prompt describing the scene you want to generate.",
-		}])
+		}]
+		show_errors(errs)
 		return
 	clear_errors()
 	var request: Dictionary = get_generation_request()
@@ -229,6 +250,11 @@ func _on_discard_pressed() -> void:
 
 func _on_random_seed_pressed() -> void:
 	_seed_spinbox.value = randi() % (MAX_SEED + 1)
+
+
+func _on_provider_selected(index: int) -> void:
+	var provider_name: String = _provider_dropdown.get_item_text(index)
+	provider_changed.emit(provider_name)
 
 
 # --- Private: UI builders ---
@@ -263,6 +289,16 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 
 	_provider_dropdown = _add_labeled_option(parent, "Provider:")
 	_model_dropdown = _add_labeled_option(parent, "Model:")
+
+	_api_key_row = HBoxContainer.new()
+	_api_key_row.add_child(_make_label("API Key:"))
+	_api_key_edit = LineEdit.new()
+	_api_key_edit.placeholder_text = "Enter API key…"
+	_api_key_edit.secret = true
+	_api_key_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_api_key_row.add_child(_api_key_edit)
+	parent.add_child(_api_key_row)
+	_api_key_row.visible = false
 
 	_style_dropdown = _add_labeled_option(parent, "Style:")
 	for preset: String in STYLE_PRESETS:

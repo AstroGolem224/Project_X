@@ -92,6 +92,7 @@ func get_asset_registry() -> Resource:
 # ---------------------------------------------------------------------------
 
 ## Runs the full generation pipeline: compile -> LLM -> validate -> resolve -> build -> post -> preview.
+## Async: suspends during LLM request. Callers must await this method.
 ## @param request: Generation request dictionary (prompt, style_preset, selected_model, seed, …).
 ## @param scene_root: The active editor scene root node to parent the preview under.
 func start_generation(request: Dictionary, scene_root: Node3D) -> void:
@@ -102,6 +103,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	_last_spec = {}
 	_last_errors = []
 	_correlation_id = "run_" + str(Time.get_ticks_msec())
+	var my_correlation: String = _correlation_id
 	_log("info", "pipeline started [%s]" % _correlation_id)
 
 	# --- Step 1: Compile prompt ---
@@ -117,7 +119,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	_log("debug", "fingerprint: %s" % fingerprint)
 	pipeline_progress.emit(0.1, "Sending to LLM...")
 
-	# --- Step 2: LLM request with retries ---
+	# --- Step 2: LLM request with retries (async) ---
 	if _llm_provider == null:
 		_fail_pipeline("ORCH_ERR_STAGE_FAILED", "No LLM provider configured.")
 		return
@@ -129,17 +131,24 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	var last_response: RefCounted = null
 
 	while json_retries <= MAX_JSON_RETRIES:
-		var response: RefCounted = _llm_provider.send_request(compiled_prompt, model, 0.0, seed_val)
-		last_response = response
-		if not response.is_success():
+		last_response = await _llm_provider.send_request(compiled_prompt, model, 0.0, seed_val)
+		if _correlation_id != my_correlation:
+			return
+		if last_response == null:
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "LLM provider returned null.")
+			return
+		if not last_response.is_success():
 			json_retries += 1
-			_log("warning", "LLM attempt %d/%d failed: %s" % [json_retries, MAX_JSON_RETRIES + 1, response.get_error_message()])
+			_log("warning", "LLM attempt %d/%d failed: %s" % [json_retries, MAX_JSON_RETRIES + 1, last_response.get_error_message()])
 			if json_retries > MAX_JSON_RETRIES:
-				_fail_pipeline("ORCH_ERR_RETRY_EXHAUSTED", "LLM request failed after %d retries: %s" % [MAX_JSON_RETRIES, response.get_error_message()])
+				_fail_pipeline("ORCH_ERR_RETRY_EXHAUSTED", "LLM request failed after %d retries: %s" % [MAX_JSON_RETRIES, last_response.get_error_message()])
 				return
 			continue
-		raw_json = response.get_raw_body()
+		raw_json = last_response.get_raw_body()
 		break
+
+	if _correlation_id != my_correlation:
+		return
 
 	if _logger != null and last_response != null:
 		_logger.record_metric("llm_latency_ms", last_response.get_latency_ms())
@@ -219,9 +228,13 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 
 
 ## Cancels a running generation and returns to IDLE.
+## Also cancels any in-flight HTTP request on the provider.
 func cancel_generation() -> void:
 	if _state == PipelineState.IDLE:
 		return
+	if _llm_provider != null:
+		_llm_provider.cancel()
+	_correlation_id = ""
 	_change_state(PipelineState.IDLE)
 	_log("info", "generation cancelled by user")
 
