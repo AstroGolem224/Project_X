@@ -209,23 +209,29 @@ func get_generation_request() -> Dictionary:
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
 		"available_asset_tags": [] as Array[String],
 		"project_constraints": "",
-		"api_key": _api_key_edit.text,
-		"host_url": _host_url_edit.text,
+		"api_key": _api_key_edit.text if _api_key_edit != null else "",
+		"host_url": _host_url_edit.text if _host_url_edit != null else "",
 	}
 
 
 ## Shows or hides the host URL input field.
 func set_host_url_visible(is_visible: bool) -> void:
+	if _host_url_row == null:
+		return
 	_host_url_row.visible = is_visible
 
 
 ## Sets the host URL field text (e.g. from persisted settings).
 func set_host_url(url: String) -> void:
+	if _host_url_edit == null:
+		return
 	_host_url_edit.text = url
 
 
 ## Returns the currently entered host URL.
 func get_host_url() -> String:
+	if _host_url_edit == null:
+		return ""
 	return _host_url_edit.text
 
 

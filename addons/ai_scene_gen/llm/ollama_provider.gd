@@ -60,6 +60,10 @@ func fetch_available_models() -> Array[String]:
 	if _http_node == null:
 		return _cached_models.duplicate()
 
+	if _http_node.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		_log("warning", "fetch_models skipped: HTTPRequest busy")
+		return _cached_models.duplicate()
+
 	var url: String = _base_url + TAGS_ENDPOINT
 	var headers: Array[String] = ["Accept: application/json"]
 

@@ -62,8 +62,8 @@ func apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> Dic
 		return {}
 
 	undo_redo.create_action("AI Scene Gen: Apply Preview")
-	undo_redo.add_do_method(_do_apply.bind(scene_root))
-	undo_redo.add_undo_method(_undo_apply.bind(scene_root))
+	undo_redo.add_do_method(self, "_do_apply", scene_root)
+	undo_redo.add_undo_method(self, "_undo_apply", scene_root)
 	undo_redo.add_do_reference(_preview_root)
 	undo_redo.add_undo_reference(_preview_root)
 	for i: int in range(_preview_root.get_child_count()):
