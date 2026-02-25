@@ -32,6 +32,7 @@ var _model_dropdown: OptionButton
 var _style_dropdown: OptionButton
 var _seed_spinbox: SpinBox
 var _seed_random_button: Button
+var _two_stage_check: CheckBox
 var _bounds_x: SpinBox
 var _bounds_y: SpinBox
 var _bounds_z: SpinBox
@@ -205,6 +206,7 @@ func get_generation_request() -> Dictionary:
 		"selected_provider": provider_text,
 		"selected_model": model_text,
 		"style_preset": style_text,
+		"two_stage": _two_stage_check.button_pressed,
 		"seed": int(_seed_spinbox.value),
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
 		"available_asset_tags": [] as Array[String],
@@ -264,12 +266,37 @@ func _on_generate_pressed() -> void:
 	if _prompt_edit.text.strip_edges() == "":
 		var errs: Array[Dictionary] = [{
 			"severity": "error",
-			"code": "EMPTY_PROMPT",
+			"code": "UI_ERR_EMPTY_PROMPT",
 			"message": "Scene description cannot be empty.",
 			"fix_hint": "Enter a prompt describing the scene you want to generate.",
 		}]
 		show_errors(errs)
 		return
+
+	var bx: float = _bounds_x.value
+	var by: float = _bounds_y.value
+	var bz: float = _bounds_z.value
+	if bx <= 0.0 or by <= 0.0 or bz <= 0.0 or bx > 1000.0 or by > 1000.0 or bz > 1000.0:
+		var errs: Array[Dictionary] = [{
+			"severity": "error",
+			"code": "UI_ERR_INVALID_BOUNDS",
+			"message": "All bound axes must be > 0 and <= 1000.",
+			"fix_hint": "Set each bound axis to a value between 0.5 and 1000.",
+		}]
+		show_errors(errs)
+		return
+
+	var seed_val: int = int(_seed_spinbox.value)
+	if seed_val < 0 or seed_val > MAX_SEED:
+		var errs: Array[Dictionary] = [{
+			"severity": "error",
+			"code": "UI_ERR_INVALID_SEED",
+			"message": "Seed must be between 0 and %d." % MAX_SEED,
+			"fix_hint": "Enter a seed value in the valid range.",
+		}]
+		show_errors(errs)
+		return
+
 	clear_errors()
 	var request: Dictionary = get_generation_request()
 	generate_requested.emit(request)
@@ -358,6 +385,11 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	for preset: String in STYLE_PRESETS:
 		_style_dropdown.add_item(preset)
 	_style_dropdown.select(0)
+
+	_two_stage_check = CheckBox.new()
+	_two_stage_check.text = "Two-Stage (detailed planning)"
+	_two_stage_check.button_pressed = false
+	parent.add_child(_two_stage_check)
 
 	# Seed row
 	var seed_row: HBoxContainer = HBoxContainer.new()

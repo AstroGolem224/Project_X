@@ -16,11 +16,12 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT (Phase 1-6 + Prio 1-3)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE (Phase 1-6 + Prio 1-4)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
 Generate-Pipeline laeuft komplett durch (mit MockProvider).
+Two-Stage Generation Mode ist implementiert und getestet.
 
 ### Was bisher implementiert wurde
 
@@ -65,7 +66,22 @@ Provider-Dropdown Verdrahtung
 - Export-Flow: Spec-Check -> Dialog -> `persistence.export_spec(last_spec, path)`
 - Fehlerhandling fuer leere Specs, fehlgeschlagene Imports, Write-Fehler
 
-### File-Inventar (29 .gd + 2 .json + 2 .md + plugin.cfg + project.godot)
+**Prio 4: Two-Stage Mode + Code-Fixes (✅ ERLEDIGT)**
+
+- Two-Stage Generation Mode im Orchestrator:
+  - Heuristik: `request["two_stage"] == true` ODER >30 Woerter im Prompt -> Two-Stage
+  - Stage 1: `compile_plan_stage(request)` -> `await send_request()` -> plan_text
+  - Stage 2: `compile_spec_stage(request, plan_text)` -> `await send_request()` -> raw_json
+  - Cancellation-Guard nach jedem `await` (correlation_id check)
+  - Pipeline-Progress: 0.0/0.05/0.15/0.20/0.30 fuer Two-Stage, 0.0/0.10 fuer Single-Stage
+  - Single-Stage Pfad bleibt als Default unveraendert
+- Dock: "Two-Stage (detailed planning)" CheckBox im Settings-Bereich
+- Error-Code Prefixes gefixt: `UI_ERR_EMPTY_PROMPT`, `UI_ERR_INVALID_BOUNDS`, `UI_ERR_INVALID_SEED`
+- `get_editor_interface()` deprecated -> `EditorInterface` Singleton (4 Stellen in plugin.gd)
+- `cancel_generation()` emittiert jetzt `ORCH_ERR_CANCELLED` via `pipeline_failed`
+- Typo-Fix: `ORCH_ERR_ST_type_FAILED` -> `ORCH_ERR_STAGE_FAILED`
+
+### File-Inventar (25 .gd + 2 .json + 2 .md + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -155,30 +171,48 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 ### Pipeline-Flow (orchestrator.start_generation — async)
 
 ```
-1. PromptCompiler.compile_single_stage(request) -> compiled_prompt
-2. await LLMProvider.send_request(prompt, model, 0.0, seed) -> LLMResponse
-   (bis zu 2 Retries bei Fehler, Cancellation-Guard via correlation_id)
-3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
-4. AssetResolver.resolve_nodes(spec, registry) -> ResolvedSpec
-5. SceneBuilder.build(resolved_spec, preview_root) -> BuildResult
-6. PostProcessor.execute_all(root, spec) -> warnings
-7. PreviewLayer.show_preview(root, scene_root)
+Single-Stage (default):
+  1. PromptCompiler.compile_single_stage(request) -> compiled_prompt
+  2. await LLMProvider.send_request(prompt, model, 0.0, seed) -> LLMResponse
+     (bis zu 2 Retries bei Fehler, Cancellation-Guard via correlation_id)
+
+Two-Stage (>30 Woerter oder CheckBox):
+  1a. PromptCompiler.compile_plan_stage(request) -> plan_prompt
+  1b. await LLMProvider.send_request(plan_prompt, ...) -> plan_text
+  1c. PromptCompiler.compile_spec_stage(request, plan_text) -> spec_prompt
+  1d. await LLMProvider.send_request(spec_prompt, ...) -> LLMResponse (mit Retries)
+
+Shared (ab Validation):
+  3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
+  4. AssetResolver.resolve_nodes(spec, registry) -> ResolvedSpec
+  5. SceneBuilder.build(resolved_spec, preview_root) -> BuildResult
+  6. PostProcessor.execute_all(root, spec) -> warnings
+  7. PreviewLayer.show_preview(root, scene_root)
 ```
 
 ## Bekannte Limitierungen (keine Bugs, Design-Grenzen)
 
 1. **Post-Processor nutzt lokale Transforms** — Korrekt fuer flache
-  Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
+   Hierarchien (1 Ebene Kinder von preview_root). Bei tief verschachtelten
    Nodes waere `global_transform` genauer, geht aber erst nach Tree-Insert.
 2. **Undo revertiert nur Tree-Operationen** — Orchestrator/Dock State
-  (IDLE/PREVIEW_READY) wird beim Undo nicht automatisch zurueckgesetzt.
+   (IDLE/PREVIEW_READY) wird beim Undo nicht automatisch zurueckgesetzt.
    Nodes werden korrekt revertiert, aber UI zeigt weiter IDLE.
 3. **Shared HTTPRequest** — Ein HTTPRequest-Node fuer alle Provider.
-  Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
+   Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
    verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
-4. **Nur Single-Stage Mode** — `compile_plan_stage()` und `compile_spec_stage()`
-  existieren im PromptCompiler, aber der Orchestrator ruft nur
-   `compile_single_stage()` auf. Two-Stage mit zweitem LLM-Call fehlt.
+4. ~~**Nur Single-Stage Mode**~~ ✅ GEFIXT — Two-Stage Mode implementiert
+   im Orchestrator mit Heuristik (>30 Woerter oder CheckBox).
+5. **Schema-Retry nicht implementiert** — `MAX_SCHEMA_RETRIES = 1` ist definiert
+   aber nicht verwendet. Nur JSON-Parse-Retries (max 2) sind aktiv. Die Architektur
+   beschreibt einen Schema-Retry-Pfad (Error-Details an Prompt anhaengen), der
+   noch implementiert werden muss.
+6. ~~**Error-Code Prefixes inkonsistent**~~ ✅ GEFIXT — Dock nutzt jetzt
+   `UI_ERR_EMPTY_PROMPT`, `UI_ERR_INVALID_BOUNDS`, `UI_ERR_INVALID_SEED`.
+7. ~~**`get_editor_interface()` deprecated**~~ ✅ GEFIXT — plugin.gd nutzt
+   jetzt `EditorInterface` Singleton (4 Stellen ersetzt).
+8. **Nur MockProvider + OllamaProvider** — OpenAIProvider und AnthropicProvider
+   aus der Architektur sind nicht implementiert.
 
 ## Fehlende Features (nach Architektur-Doc, priorisiert)
 
@@ -188,32 +222,9 @@ orchestrator.pipeline_failed        -> plugin._on_pipeline_failed        -> dock
 
 ### ~~Prio 3: Import/Export UI~~ ✅ ERLEDIGT
 
-### Prio 4: Two-Stage Mode (NAECHSTER SCHRITT)
+### ~~Prio 4: Two-Stage Mode~~ ✅ ERLEDIGT
 
-**Was:** Bei komplexen Prompts (viele Objekte, raeumliche Beziehungen) einen
-zweistufigen LLM-Call machen: erst Plan, dann SceneSpec basierend auf dem Plan.
-
-**Voraussetzungen (bereits implementiert):**
-
-- `PromptCompiler.compile_plan_stage(request: Dictionary) -> String` existiert
-- `PromptCompiler.compile_spec_stage(request: Dictionary, plan_text: String) -> String` existiert
-- Orchestrator ist bereits async mit `await` auf LLM-Calls
-
-**Was zu tun ist:**
-
-- Orchestrator: `start_generation()` erweitern mit Two-Stage Pfad
-  - Heuristik: >30 Woerter im Prompt ODER `request["two_stage"] == true` -> Two-Stage
-  - Stage 1: `compile_plan_stage(request)` -> `await send_request()` -> plan_text
-  - Stage 2: `compile_spec_stage(request, plan_text)` -> `await send_request()` -> raw_json
-  - Weiter wie bisher ab Validation (Step 3)
-- Dock: CheckBox "Two-Stage" hinzufuegen (default: aus)
-  - In `get_generation_request()` als `"two_stage": bool` aufnehmen
-- Pipeline-Progress anpassen: 0.0-0.05 Compile, 0.05-0.15 Plan-LLM, 0.15-0.30 Spec-LLM, 0.30+ wie bisher
-- Cancellation-Guard nach jedem `await` (wie bereits bei Single-Stage)
-
-**Architektur-Referenz:** ARCHITECTURE_INTEGRATED.md Abschnitt 6 "Two-Stage vs Single-Stage" (Zeile ~1497)
-
-### Prio 5: Variation Mode + Asset Tag Browser
+### Prio 5: Variation Mode + Asset Tag Browser (NAECHSTER SCHRITT)
 
 - FR-14: Random Suffix an Prompt wenn Variation aktiviert
 - FR-13: Panel das registrierte Tags zeigt
@@ -269,53 +280,64 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 2. ~~Async Pipeline + Ollama Provider~~ ✅ ERLEDIGT
 3. ~~EditorUndoRedoManager in Preview Layer~~ ✅ ERLEDIGT
 4. ~~Import/Export Buttons im Dock~~ ✅ ERLEDIGT
-5. **Two-Stage Mode im Orchestrator** (naechster logischer Schritt)
-6. Variation Mode + Asset Tag Browser
+5. ~~Two-Stage Mode im Orchestrator~~ ✅ ERLEDIGT
+6. **Variation Mode + Asset Tag Browser** (naechster logischer Schritt)
 7. CI/CD (GUT + GitHub Actions)
 
 ---
 
-## Agenten-Prompt: Two-Stage Mode implementieren
+## Agenten-Prompt: Prio 5 — Variation Mode + Asset Tag Browser
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
-Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext. Danach
-ARCHITECTURE_INTEGRATED.md Abschnitt 6 "Two-Stage vs Single-Stage" (ca. Zeile 1497)
-und Abschnitt 4.D (Prompt Compiler) fuer die Modul-Specs.
+Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4.A (Dock), 4.D (Prompt Compiler),
+und 4.F (Asset Resolver + Registry) fuer die Modul-Specs.
 
-Naechster Schritt: Two-Stage Mode im Orchestrator implementieren.
+Prio 1-4 sind erledigt (Async, Undo, Import/Export, Two-Stage).
+Naechster Schritt: Prio 5 — Variation Mode + Asset Tag Browser.
 
-Konkret:
+SCHRITT 1: Variation Mode (FR-14)
 
-1. `orchestrator.gd` -> `start_generation()` erweitern:
-   - Heuristik: `request.get("two_stage", false)` ODER Wortanzahl im
-     `user_prompt` > 30 -> Two-Stage Modus aktivieren
-   - Stage 1: `_prompt_compiler.compile_plan_stage(request)` -> await `_llm_provider.send_request()`
-     -> plan_text extrahieren aus LLMResponse.get_raw_body()
-   - Cancellation-Guard nach await (correlation_id check)
-   - Stage 2: `_prompt_compiler.compile_spec_stage(request, plan_text)` -> await `_llm_provider.send_request()`
-     -> raw_json (weiter wie bisher ab Validation)
-   - Cancellation-Guard nach await
-   - Pipeline-Progress anpassen: 0.0 Compile, 0.05 Plan-LLM, 0.15 Spec-LLM, 0.30 Validate, etc.
-   - Single-Stage Pfad bleibt unveraendert als Default
+1a. `ai_scene_gen_dock.gd` -> Variation-CheckBox hinzufuegen:
+    - `var _variation_check: CheckBox` im Settings-Bereich (nach Two-Stage, vor Seed)
+    - Default: unchecked
+    - In `get_generation_request()` als `"variation": _variation_check.button_pressed` aufnehmen
 
-2. `ai_scene_gen_dock.gd` -> Two-Stage CheckBox hinzufuegen:
-   - `var _two_stage_check: CheckBox` im Settings-Bereich (nach Style, vor Seed)
-   - Default: unchecked
-   - In `get_generation_request()` als `"two_stage": _two_stage_check.button_pressed` aufnehmen
+1b. `prompt_compiler.gd` -> Variation-Suffix an Prompt anhaengen:
+    - Wenn `request.get("variation", false)` == true:
+      Einen zufaelligen Suffix an den user_prompt anhaengen BEVOR kompiliert wird,
+      z.B. " [variation_seed={randi()}]" damit der LLM unterschiedliche Layouts generiert
+    - Der Seed im Request bleibt gleich (deterministische Builds), aber der Prompt
+      variiert leicht -> anderes LLM-Ergebnis
 
-3. `prompt_compiler.gd` -> Pruefen ob `compile_plan_stage()` und `compile_spec_stage()`
-   korrekt implementiert sind (sie existieren bereits). Falls noetig, anpassen damit:
-   - Plan-Stage: LLM soll JSON Plan mit {name, approximate_position, role, notes} Arrays ausgeben
-   - Spec-Stage: Plan-JSON wird als LAYOUT PLAN Kontext injiziert
+SCHRITT 2: Asset Tag Browser (FR-13)
 
-4. In Godot testen (Pfad: J:\Godot\Godot_v4.6.1-stable_win64.exe):
-   - `--headless --editor --quit-after 5` fuer Plugin-Load-Test
-   - Alle Fehler fixen
+2a. `ai_scene_gen_dock.gd` -> Asset-Tag-Browser Panel:
+    - Neuer aufklappbarer Bereich unter den Bounds: "Available Asset Tags"
+    - Liest Tags aus der `AssetTagRegistry` (wird via Orchestrator uebergeben)
+    - Zeigt jeden Tag als Label an (mit Kategorie wenn vorhanden)
+    - Selektierte Tags werden in `get_generation_request()["available_asset_tags"]` aufgenommen
+    - Wenn keine Tags registriert: "No asset tags registered" Label anzeigen
 
-5. Nach Abschluss: Alles committen und auf GitHub pushen.
-   Commit-Message: "feat: two-stage generation mode"
+2b. `plugin.gd` -> Asset Registry an Dock weiterreichen:
+    - Nach Plugin-Init: Dock ueber verfuegbare Tags informieren
+    - Signal oder direkter Call wenn Registry sich aendert
+
+SCHRITT 3: Testen und Committen
+
+3a. In Godot testen (Pfad: J:\Godot\Godot_v4.6.1-stable_win64.exe):
+    - `--headless --editor --quit-after 5` fuer Plugin-Load-Test
+    - Alle Fehler fixen
+
+3b. HANDOFF.md updaten:
+    - "Prio 5" als erledigt markieren
+    - Neuen Agenten-Prompt fuer Prio 6 (CI/CD) schreiben
+    - File-Count pruefen und ggf. anpassen
+
+3c. Nach Abschluss: Alles committen und auf GitHub pushen.
+    Commit-Message: "feat: variation mode + asset tag browser"
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten, besonders
 typed Arrays bei Dynamic Dispatch. Sicherheits-Invarianten niemals brechen.

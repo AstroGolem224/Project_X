@@ -1,8 +1,8 @@
 # AI Scene Generator Plugin — Integrated Architecture Document
 
 > **Version:** 1.0.0
-> **Status:** Design (pre-implementation)
-> **Target Engine:** Godot 4.4+
+> **Status:** Implemented (Phase 1-6, Prio 1-3 done)
+> **Target Engine:** Godot 4.4+ (tested on 4.6.1 stable)
 > **Plugin Type:** `@tool` EditorPlugin (pure GDScript, no GDExtension)
 > **Date:** 2026-02-25
 
@@ -187,6 +187,7 @@ signal apply_requested()
 signal discard_requested()
 signal import_requested(path: String)
 signal export_requested(path: String)
+signal provider_changed(provider_name: String)
 
 func set_state(new_state: int) -> void
 func show_errors(errors: Array[Dictionary]) -> void
@@ -253,15 +254,17 @@ signal pipeline_progress(percent: float, message: String)
 signal pipeline_completed(spec: Dictionary)
 signal pipeline_failed(errors: Array[Dictionary])
 
-func start_generation(request: Dictionary) -> void
+func start_generation(request: Dictionary, scene_root: Node3D) -> void
 func cancel_generation() -> void
-func apply_preview(undo_redo: EditorUndoRedoManager) -> void
+func apply_preview(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> void
 func discard_preview() -> void
-func rebuild_from_spec(spec: Dictionary) -> void
+func rebuild_from_spec(spec: Dictionary, scene_root: Node3D) -> void
 func get_current_state() -> int
 func get_last_spec() -> Dictionary
-func build_determinism_fingerprint(request: Dictionary) -> String
+func get_last_errors() -> Array[Dictionary]
 ```
+
+> **Note:** `build_determinism_fingerprint()` lives on the `PromptCompiler`, not the Orchestrator. The Orchestrator calls it internally via `_prompt_compiler.build_determinism_fingerprint(request)`.
 
 **Inputs / Outputs:**
 
@@ -302,7 +305,7 @@ func build_determinism_fingerprint(request: Dictionary) -> String
 **Responsibilities:**
 
 - Define a pluggable interface for LLM communication.
-- Ship with implementations: `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `MockProvider`.
+- Ship with implementations: `OllamaProvider`, `MockProvider`. Future: `OpenAIProvider`, `AnthropicProvider` (not yet implemented).
 - Handle HTTP transport, auth headers, rate limits, and timeouts.
 - Return raw JSON string (unparsed) to the Orchestrator.
 - Provide a `health_check()` method for connection validation.
@@ -338,10 +341,10 @@ func get_token_usage() -> Dictionary
 
 | Provider | Endpoint | Auth | Notes |
 |----------|----------|------|-------|
-| `OpenAIProvider` | `https://api.openai.com/v1/chat/completions` | Bearer token | Supports `response_format: { type: "json_object" }` |
-| `AnthropicProvider` | `https://api.anthropic.com/v1/messages` | `x-api-key` header | Uses system prompt for JSON enforcement |
-| `OllamaProvider` | `http://localhost:11434/api/generate` | None (local) | Requires Ollama running locally |
+| `OllamaProvider` | `http://localhost:11434/api/generate` | None (local) | Requires Ollama running locally. Configurable base URL via `set_base_url()`. |
 | `MockProvider` | N/A | None | Returns canned specs from `res://addons/ai_scene_gen/mocks/` |
+| `OpenAIProvider` | `https://api.openai.com/v1/chat/completions` | Bearer token | **Planned, not yet implemented** |
+| `AnthropicProvider` | `https://api.anthropic.com/v1/messages` | `x-api-key` header | **Planned, not yet implemented** |
 
 **Failure Modes:**
 
@@ -700,9 +703,9 @@ Given the same `resolved_spec` dictionary (byte-identical JSON), the builder pro
 
 - Run an ordered list of passes on the built scene tree before preview.
 - Each pass is a self-contained function that reads/modifies the tree.
-- Built-in passes:
-  1. **SnapToGround** -- Raycast downward from each node; snap `y` to ground plane if within threshold.
-  2. **BoundsClamp** -- Clamp all node positions to the scene bounds from the spec.
+- Built-in passes (execution order):
+  1. **BoundsClamp** -- Clamp all node positions to the scene bounds from the spec.
+  2. **SnapToGround** -- Warn about nodes floating above ground plane (MVP: detect and warn, no raycast snap).
   3. **CameraFraming** -- Position the `Camera3D` to frame all objects (bounding-box enclosure).
   4. **CollisionCheck** -- Warn if any two nodes overlap by more than 50% of their bounding boxes.
   5. **NamingPass** -- Ensure unique node names (append `_2`, `_3`, etc. on collision).
@@ -716,18 +719,20 @@ Given the same `resolved_spec` dictionary (byte-identical JSON), the builder pro
 **Public Interface:**
 
 ```text
-class_name PostProcessorPass extends RefCounted
+class_name PostProcessor extends RefCounted
 
-func get_pass_name() -> String
-func execute(root: Node3D, spec: Dictionary) -> Array[Dictionary]
-
-class_name PostProcessorPipeline extends RefCounted
-
-func add_pass(p: PostProcessorPass) -> void
-func remove_pass(name: String) -> void
+func add_pass(p: RefCounted) -> void
+func remove_pass(pass_name: String) -> void
 func execute_all(root: Node3D, spec: Dictionary) -> Array[Dictionary]
 func get_pass_names() -> Array[String]
+
+# Inner class:
+class PostProcessorPass extends RefCounted:
+    func get_pass_name() -> String
+    func execute(root: Node3D, spec: Dictionary) -> Array[Dictionary]
 ```
+
+> **Note:** `PostProcessorPass` is an inner class within `PostProcessor`, not a standalone script. Built-in passes (BoundsClamp, SnapToGround, CameraFraming, CollisionCheck, NamingPass) are also inner classes.
 
 **Failure Modes:**
 
@@ -773,13 +778,15 @@ func get_pass_names() -> Array[String]
 ```text
 class_name PreviewLayer extends RefCounted
 
-func show_preview(root: Node3D, scene_root: Node3D) -> void
-func apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> void
+func show_preview(root: Node3D, scene_root: Node3D) -> Dictionary
+func apply_to_scene(undo_redo: EditorUndoRedoManager, scene_root: Node3D) -> Dictionary
 func discard() -> void
 func is_preview_active() -> bool
 func get_preview_node_count() -> int
 func get_diff_summary() -> Dictionary
 ```
+
+> **Note:** `show_preview` and `apply_to_scene` return an empty `{}` on success, or an error dictionary (error contract format) on failure. The Orchestrator checks the return value.
 
 **Failure Modes:**
 
@@ -891,7 +898,7 @@ func get_settings_path() -> String
 
 | File | Path | Format |
 |------|------|--------|
-| Plugin settings | `res://addons/ai_scene_gen/settings.tres` | Godot Resource |
+| Plugin settings | `res://addons/ai_scene_gen/settings.json` | JSON |
 | Model cache | `res://addons/ai_scene_gen/cache/models_{provider}.json` | JSON |
 | Asset tag registry | `res://addons/ai_scene_gen/asset_tags.tres` | Godot Resource |
 | Exported SceneSpec | User-chosen path under `res://` | `.scenespec.json` |
@@ -1487,12 +1494,13 @@ RULES:
 14. Do not include code, scripts, file paths, or unsupported fields.
     If unsure, choose safe primitive fallbacks.
 
-AVAILABLE ASSET TAGS: {asset_tags_or_none}
-PROJECT CONSTRAINTS: {constraints_or_none}
+AVAILABLE ASSET TAGS: {asset_tags}
+PROJECT CONSTRAINTS: {constraints}
 SCENE BOUNDS (meters): {bounds}
-
-USER REQUEST: {user_prompt}
+{plan_section}USER REQUEST: {user_prompt}
 ```
+
+> **Note:** `{plan_section}` is empty for single-stage mode. For two-stage spec-stage, it contains `\nLAYOUT PLAN (follow this): {plan_json}\n\n`.
 
 ### Two-Stage vs Single-Stage
 
@@ -1939,6 +1947,11 @@ graph TB
   Logger["K: Logger"]
   Persistence["L: Persistence"]
 
+  Plugin["EditorPlugin\n(plugin.gd)"]
+
+  Plugin --> UIDock
+  Plugin --> Orchestrator
+  Plugin --> Persistence
   UIDock --> Orchestrator
   Orchestrator --> PromptCompiler
   Orchestrator --> LLMClient
@@ -1948,9 +1961,6 @@ graph TB
   Orchestrator --> PostProcessor
   Orchestrator --> PreviewLayer
   Orchestrator --> Logger
-  Orchestrator --> Persistence
-
-  AssetResolver --> PrimitiveFactory
 
   SceneBuilder --> PrimitiveFactory
 
@@ -1965,11 +1975,12 @@ graph TB
 
 **Coupling notes:**
 
-- The Orchestrator is the only high-fan-out module. All other modules have 1-2 dependencies.
+- `plugin.gd` (EditorPlugin) owns Persistence directly and wires it to the UI. The Orchestrator has no reference to Persistence.
+- AssetResolver does NOT depend on PrimitiveFactory. It only annotates the spec with `_resolved_path` or `_fallback` flags. SceneBuilder uses PrimitiveFactory for actual fallback instantiation.
+- The Orchestrator is the highest-fan-out module. All other modules have 1-2 dependencies.
 - Leaf modules (Prompt Compiler, Validator, Primitive Factory) depend only on Logger.
 - Logger depends on nothing.
 - No circular dependencies exist.
-- Every module communicates through typed interfaces, not concrete implementations.
 
 ---
 

@@ -1,0 +1,12 @@
+feat: two-stage generation mode + fix error codes and deprecations
+
+- Two-stage LLM pipeline: plan stage -> spec stage for complex prompts
+  (>30 words or explicit checkbox toggle)
+- Cancellation guards after every await in two-stage path
+- UI: "Two-Stage (detailed planning)" checkbox in dock settings
+- Fix error codes: UI_ERR_EMPTY_PROMPT, UI_ERR_INVALID_BOUNDS, UI_ERR_INVALID_SEED
+- Add bounds validation (all axes > 0 and <= 1000) and seed validation
+- Replace deprecated get_editor_interface() with EditorInterface singleton
+- Emit ORCH_ERR_CANCELLED on cancel_generation()
+- Fix typo: ORCH_ERR_ST_type_FAILED -> ORCH_ERR_STAGE_FAILED
+- Update HANDOFF.md: Prio 4 done, new agent prompt for Prio 5

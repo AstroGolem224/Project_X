@@ -24,7 +24,7 @@ func _enter_tree() -> void:
 	_logger.log_info(LOG_CATEGORY, "%s v%s loading..." % [PLUGIN_NAME, PLUGIN_VERSION])
 
 	_persistence = AiSceneGenPersistence.new(_logger)
-	_persistence.set_editor_interface(get_editor_interface())
+	_persistence.set_editor_interface(EditorInterface)
 
 	_http_request = HTTPRequest.new()
 	_http_request.timeout = HTTP_TIMEOUT
@@ -144,7 +144,7 @@ func _disconnect_signals() -> void:
 
 
 func _on_generate_requested(request: Dictionary) -> void:
-	var raw_root: Node = get_editor_interface().get_edited_scene_root()
+	var raw_root: Node = EditorInterface.get_edited_scene_root()
 	if raw_root == null:
 		var errs: Array[Dictionary] = [{
 			"code": "UI_ERR_NO_SCENE",
@@ -187,7 +187,7 @@ func _on_generate_requested(request: Dictionary) -> void:
 
 
 func _on_apply_requested() -> void:
-	var raw_root: Node = get_editor_interface().get_edited_scene_root()
+	var raw_root: Node = EditorInterface.get_edited_scene_root()
 	if raw_root == null or not raw_root is Node3D:
 		return
 	var scene_root: Node3D = raw_root as Node3D
@@ -283,7 +283,7 @@ func _on_import_file_selected(path: String) -> void:
 		_dock.show_errors(errs)
 		return
 
-	var raw_root: Node = get_editor_interface().get_edited_scene_root()
+	var raw_root: Node = EditorInterface.get_edited_scene_root()
 	if raw_root == null or not raw_root is Node3D:
 		var errs: Array[Dictionary] = [{
 			"code": "UI_ERR_NO_SCENE",

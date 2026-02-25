@@ -92,8 +92,9 @@ func get_asset_registry() -> Resource:
 # ---------------------------------------------------------------------------
 
 ## Runs the full generation pipeline: compile -> LLM -> validate -> resolve -> build -> post -> preview.
+## Supports single-stage (default) and two-stage (plan -> spec) modes.
 ## Async: suspends during LLM request. Callers must await this method.
-## @param request: Generation request dictionary (prompt, style_preset, selected_model, seed, …).
+## @param request: Generation request dictionary (prompt, style_preset, selected_model, seed, two_stage, …).
 ## @param scene_root: The active editor scene root node to parent the preview under.
 func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	if _state != PipelineState.IDLE and _state != PipelineState.ERROR:
@@ -106,55 +107,113 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	var my_correlation: String = _correlation_id
 	_log("info", "pipeline started [%s]" % _correlation_id)
 
-	# --- Step 1: Compile prompt ---
 	_change_state(PipelineState.GENERATING)
-	pipeline_progress.emit(0.0, "Compiling prompt...")
 
-	var compiled_prompt: String = _prompt_compiler.compile_single_stage(request)
-	if compiled_prompt.is_empty():
-		_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Pipeline failed at 'compile': prompt compilation returned empty.")
-		return
-
-	var fingerprint: String = _prompt_compiler.build_determinism_fingerprint(request)
-	_log("debug", "fingerprint: %s" % fingerprint)
-	pipeline_progress.emit(0.1, "Sending to LLM...")
-
-	# --- Step 2: LLM request with retries (async) ---
 	if _llm_provider == null:
 		_fail_pipeline("ORCH_ERR_STAGE_FAILED", "No LLM provider configured.")
 		return
 
 	var model: String = request.get("selected_model", "") as String
 	var seed_val: int = request.get("seed", 42) as int
+	var user_prompt: String = (request.get("user_prompt", "") as String).strip_edges()
+	var word_count: int = user_prompt.split(" ", false).size()
+	var use_two_stage: bool = (request.get("two_stage", false) as bool) or word_count > 30
+
+	var fingerprint: String = _prompt_compiler.build_determinism_fingerprint(request)
+	_log("debug", "fingerprint: %s" % fingerprint)
+
 	var raw_json: String = ""
-	var json_retries: int = 0
 	var last_response: RefCounted = null
 
-	while json_retries <= MAX_JSON_RETRIES:
-		last_response = await _llm_provider.send_request(compiled_prompt, model, 0.0, seed_val)
+	if use_two_stage:
+		_log("info", "two-stage mode (word_count=%d, explicit=%s)" % [word_count, str(request.get("two_stage", false))])
+
+		# --- Stage 1: Plan ---
+		pipeline_progress.emit(0.0, "Compiling plan prompt...")
+		var plan_prompt: String = _prompt_compiler.compile_plan_stage(request)
+		if plan_prompt.is_empty():
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Pipeline failed at 'compile_plan': prompt compilation returned empty.")
+			return
+
+		pipeline_progress.emit(0.05, "Sending plan to LLM...")
+		var plan_response: RefCounted = await _llm_provider.send_request(plan_prompt, model, 0.0, seed_val)
 		if _correlation_id != my_correlation:
 			return
-		if last_response == null:
-			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "LLM provider returned null.")
+		if plan_response == null:
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Plan stage: LLM provider returned null.")
 			return
-		if not last_response.is_success():
-			json_retries += 1
-			_log("warning", "LLM attempt %d/%d failed: %s" % [json_retries, MAX_JSON_RETRIES + 1, last_response.get_error_message()])
-			if json_retries > MAX_JSON_RETRIES:
-				_fail_pipeline("ORCH_ERR_RETRY_EXHAUSTED", "LLM request failed after %d retries: %s" % [MAX_JSON_RETRIES, last_response.get_error_message()])
-				return
-			continue
-		raw_json = last_response.get_raw_body()
-		break
+		if not plan_response.is_success():
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Plan stage failed: %s" % plan_response.get_error_message())
+			return
 
-	if _correlation_id != my_correlation:
-		return
+		var plan_text: String = plan_response.get_raw_body()
+		_log("info", "plan stage completed, plan length: %d chars" % plan_text.length())
+		if _logger != null:
+			_logger.record_metric("plan_llm_latency_ms", plan_response.get_latency_ms())
+
+		# --- Stage 2: Spec ---
+		pipeline_progress.emit(0.15, "Compiling spec prompt...")
+		var spec_prompt: String = _prompt_compiler.compile_spec_stage(request, plan_text)
+		if spec_prompt.is_empty():
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Pipeline failed at 'compile_spec': prompt compilation returned empty.")
+			return
+
+		pipeline_progress.emit(0.20, "Sending spec to LLM...")
+		var json_retries: int = 0
+		while json_retries <= MAX_JSON_RETRIES:
+			last_response = await _llm_provider.send_request(spec_prompt, model, 0.0, seed_val)
+			if _correlation_id != my_correlation:
+				return
+			if last_response == null:
+				_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Spec stage: LLM provider returned null.")
+				return
+			if not last_response.is_success():
+				json_retries += 1
+				_log("warning", "Spec LLM attempt %d/%d failed: %s" % [json_retries, MAX_JSON_RETRIES + 1, last_response.get_error_message()])
+				if json_retries > MAX_JSON_RETRIES:
+					_fail_pipeline("ORCH_ERR_RETRY_EXHAUSTED", "Spec LLM request failed after %d retries: %s" % [MAX_JSON_RETRIES, last_response.get_error_message()])
+					return
+				continue
+			raw_json = last_response.get_raw_body()
+			break
+
+		if _correlation_id != my_correlation:
+			return
+	else:
+		# --- Single-Stage (default) ---
+		pipeline_progress.emit(0.0, "Compiling prompt...")
+		var compiled_prompt: String = _prompt_compiler.compile_single_stage(request)
+		if compiled_prompt.is_empty():
+			_fail_pipeline("ORCH_ERR_STAGE_FAILED", "Pipeline failed at 'compile': prompt compilation returned empty.")
+			return
+
+		pipeline_progress.emit(0.10, "Sending to LLM...")
+		var json_retries: int = 0
+		while json_retries <= MAX_JSON_RETRIES:
+			last_response = await _llm_provider.send_request(compiled_prompt, model, 0.0, seed_val)
+			if _correlation_id != my_correlation:
+				return
+			if last_response == null:
+				_fail_pipeline("ORCH_ERR_STAGE_FAILED", "LLM provider returned null.")
+				return
+			if not last_response.is_success():
+				json_retries += 1
+				_log("warning", "LLM attempt %d/%d failed: %s" % [json_retries, MAX_JSON_RETRIES + 1, last_response.get_error_message()])
+				if json_retries > MAX_JSON_RETRIES:
+					_fail_pipeline("ORCH_ERR_RETRY_EXHAUSTED", "LLM request failed after %d retries: %s" % [MAX_JSON_RETRIES, last_response.get_error_message()])
+					return
+				continue
+			raw_json = last_response.get_raw_body()
+			break
+
+		if _correlation_id != my_correlation:
+			return
 
 	if _logger != null and last_response != null:
 		_logger.record_metric("llm_latency_ms", last_response.get_latency_ms())
-	pipeline_progress.emit(0.3, "Validating SceneSpec...")
+	pipeline_progress.emit(0.30, "Validating SceneSpec...")
 
-	# --- Step 3: Validate ---
+	# --- Validate ---
 	_change_state(PipelineState.VALIDATING)
 
 	raw_json = _strip_markdown_fences(raw_json)
@@ -173,9 +232,9 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 
 	var spec: Dictionary = spec_or_null as Dictionary
 	_last_spec = spec
-	pipeline_progress.emit(0.5, "Resolving assets...")
+	pipeline_progress.emit(0.50, "Resolving assets...")
 
-	# --- Step 4: Resolve assets ---
+	# --- Resolve assets ---
 	_change_state(PipelineState.RESOLVING)
 
 	var resolved: RefCounted = _asset_resolver.resolve_nodes(spec, _asset_registry)
@@ -184,9 +243,9 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 		resolved.get_fallback_count(),
 		str(resolved.get_missing_tags()),
 	])
-	pipeline_progress.emit(0.6, "Building scene...")
+	pipeline_progress.emit(0.60, "Building scene...")
 
-	# --- Step 5: Build scene ---
+	# --- Build scene ---
 	_change_state(PipelineState.BUILDING)
 
 	var preview_root: Node3D = Node3D.new()
@@ -201,17 +260,17 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	if _logger != null:
 		_logger.record_metric("build_node_count", build_result.get_node_count())
 		_logger.record_metric("build_duration_ms", build_result.get_build_duration_ms())
-	pipeline_progress.emit(0.8, "Post-processing...")
+	pipeline_progress.emit(0.80, "Post-processing...")
 
-	# --- Step 6: Post-process ---
+	# --- Post-process ---
 	_change_state(PipelineState.POST_PROCESSING)
 
 	var post_warnings: Array[Dictionary] = _post_processor.execute_all(preview_root, spec)
 	if not post_warnings.is_empty():
 		_log("info", "%d post-processing warning(s)" % post_warnings.size())
-	pipeline_progress.emit(0.9, "Showing preview...")
+	pipeline_progress.emit(0.90, "Showing preview...")
 
-	# --- Step 7: Preview ---
+	# --- Preview ---
 	var preview_err: Dictionary = _preview_layer.show_preview(preview_root, scene_root)
 	if not preview_err.is_empty():
 		preview_root.queue_free()
@@ -235,6 +294,8 @@ func cancel_generation() -> void:
 	if _llm_provider != null:
 		_llm_provider.cancel()
 	_correlation_id = ""
+	var cancel_errors: Array[Dictionary] = [_make_error("ORCH_ERR_CANCELLED", "Generation cancelled by user.")]
+	pipeline_failed.emit(cancel_errors)
 	_change_state(PipelineState.IDLE)
 	_log("info", "generation cancelled by user")
 
