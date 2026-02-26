@@ -2,7 +2,62 @@
 extends GutTest
 
 ## GUT tests for AiSceneGenOrchestrator (Module B).
-## Covers: state management, pipeline flow with MockProvider, cancel, two-stage heuristic.
+## Covers: state management, pipeline flow with MockProvider, cancel, two-stage heuristic,
+## schema retry with error feedback.
+
+
+## Mock provider that returns invalid schema JSON on early calls and valid JSON later.
+## Used to exercise the schema-retry logic in the orchestrator.
+class _SchemaRetryMock extends LLMProvider:
+	var call_count: int = 0
+	var valid_json: String = ""
+	var succeed_on_attempt: int = 2
+
+	func get_provider_name() -> String:
+		return "SchemaRetryMock"
+
+	func is_configured() -> bool:
+		return true
+
+	func get_available_models() -> Array[String]:
+		var m: Array[String] = ["test-model"]
+		return m
+
+	func send_request(_prompt: String, _model: String, _temp: float, _seed: int) -> LLMResponse:
+		call_count += 1
+		if succeed_on_attempt > 0 and call_count >= succeed_on_attempt:
+			var usage: Dictionary = {"prompt_tokens": 100, "completion_tokens": 200}
+			return LLMResponse.create_success(valid_json, 10, usage)
+		var usage: Dictionary = {"prompt_tokens": 50, "completion_tokens": 50}
+		return LLMResponse.create_success('{"not_a_valid_spec": true}', 10, usage)
+
+
+## Like _SchemaRetryMock but also captures the prompt sent to it.
+class _PromptCaptureMock extends LLMProvider:
+	var call_count: int = 0
+	var valid_json: String = ""
+	var succeed_on_attempt: int = 2
+	var last_prompt: String = ""
+
+	func get_provider_name() -> String:
+		return "PromptCaptureMock"
+
+	func is_configured() -> bool:
+		return true
+
+	func get_available_models() -> Array[String]:
+		var m: Array[String] = ["test-model"]
+		return m
+
+	func send_request(prompt: String, _model: String, _temp: float, _seed: int) -> LLMResponse:
+		call_count += 1
+		last_prompt = prompt
+		if succeed_on_attempt > 0 and call_count >= succeed_on_attempt:
+			var usage: Dictionary = {"prompt_tokens": 100, "completion_tokens": 200}
+			return LLMResponse.create_success(valid_json, 10, usage)
+		var usage: Dictionary = {"prompt_tokens": 50, "completion_tokens": 50}
+		return LLMResponse.create_success('{"not_a_valid_spec": true}', 10, usage)
+
 
 var _orchestrator: AiSceneGenOrchestrator
 var _root: Node3D
@@ -262,5 +317,95 @@ func test_correlation_id_changes_between_runs() -> void:
 		"second run should also complete"
 	)
 	root2.queue_free()
+
+# endregion
+
+# region --- Schema retry ---
+
+func test_schema_retry_succeeds_on_second_attempt() -> void:
+	var valid_json: String = _load_mock_json()
+	if valid_json.is_empty():
+		pending("mock file not available")
+		return
+
+	var mock: _SchemaRetryMock = _SchemaRetryMock.new()
+	mock.valid_json = valid_json
+	mock.succeed_on_attempt = 2
+	_orchestrator.set_llm_provider(mock)
+
+	var request: Dictionary = _make_valid_request()
+	await _orchestrator.start_generation(request, _root)
+
+	assert_eq(
+		_orchestrator.get_current_state(),
+		AiSceneGenOrchestrator.PipelineState.PREVIEW_READY,
+		"schema retry should recover and reach PREVIEW_READY"
+	)
+	assert_eq(mock.call_count, 2, "should have called LLM twice (initial + 1 schema retry)")
+
+
+func test_schema_retry_exhaustion_fails() -> void:
+	var mock: _SchemaRetryMock = _SchemaRetryMock.new()
+	mock.valid_json = ""
+	mock.succeed_on_attempt = 0
+	_orchestrator.set_llm_provider(mock)
+
+	var request: Dictionary = _make_valid_request()
+	await _orchestrator.start_generation(request, _root)
+
+	assert_eq(
+		_orchestrator.get_current_state(),
+		AiSceneGenOrchestrator.PipelineState.ERROR,
+		"should fail after exhausting schema retries"
+	)
+	assert_gt(_received_errors.size(), 0, "should have validation errors")
+	assert_eq(
+		mock.call_count,
+		1 + AiSceneGenOrchestrator.MAX_SCHEMA_RETRIES,
+		"should have called LLM 1 + MAX_SCHEMA_RETRIES times"
+	)
+
+
+func test_schema_retry_passes_validation_errors_to_prompt() -> void:
+	var valid_json: String = _load_mock_json()
+	if valid_json.is_empty():
+		pending("mock file not available")
+		return
+
+	var mock: _PromptCaptureMock = _PromptCaptureMock.new()
+	mock.valid_json = valid_json
+	mock.succeed_on_attempt = 2
+	_orchestrator.set_llm_provider(mock)
+
+	await _orchestrator.start_generation(_make_valid_request(), _root)
+
+	assert_eq(
+		_orchestrator.get_current_state(),
+		AiSceneGenOrchestrator.PipelineState.PREVIEW_READY,
+		"should complete after retry"
+	)
+	assert_true(
+		mock.last_prompt.find("Validation errors") != -1,
+		"retry prompt should contain validation error feedback"
+	)
+	assert_true(
+		mock.last_prompt.find("not_a_valid_spec") != -1,
+		"retry prompt should contain the invalid JSON"
+	)
+
+# endregion
+
+# region --- Schema retry helpers ---
+
+func _load_mock_json() -> String:
+	var path: String = "res://addons/ai_scene_gen/mocks/outdoor_clearing.scenespec.json"
+	if not FileAccess.file_exists(path):
+		return ""
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	var content: String = file.get_as_text()
+	file.close()
+	return content
 
 # endregion

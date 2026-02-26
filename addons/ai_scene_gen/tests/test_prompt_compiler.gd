@@ -179,3 +179,71 @@ func test_variation_suffix_changes_between_calls() -> void:
 	assert_true(result_b.length() > 0)
 
 # endregion
+
+# region --- Retry stage compilation ---
+
+func test_retry_stage_contains_error_feedback() -> void:
+	var request: Dictionary = _make_valid_request()
+	var invalid_json: String = '{"broken": true}'
+	var errors: Array[Dictionary] = [
+		{"code": "SPEC_ERR_VERSION", "message": "Missing spec_version field"},
+		{"code": "SPEC_ERR_META", "message": "Missing meta field"},
+	]
+	var result: String = _compiler.compile_retry_stage(request, invalid_json, errors)
+	assert_true(result.length() > 0, "retry stage should produce non-empty output")
+	assert_true(
+		result.find("Validation errors") != -1,
+		"retry prompt should contain 'Validation errors'"
+	)
+	assert_true(
+		result.find("SPEC_ERR_VERSION") != -1,
+		"retry prompt should contain error code"
+	)
+	assert_true(
+		result.find("Missing spec_version field") != -1,
+		"retry prompt should contain error message"
+	)
+	assert_true(
+		result.find('{"broken": true}') != -1,
+		"retry prompt should contain the invalid JSON"
+	)
+
+
+func test_retry_stage_includes_base_prompt() -> void:
+	var request: Dictionary = _make_valid_request()
+	var errors: Array[Dictionary] = [{"code": "ERR", "message": "test"}]
+	var result: String = _compiler.compile_retry_stage(request, "{}", errors)
+	assert_true(
+		result.find("SceneSpec v1.0.0") != -1,
+		"retry prompt should include the base system template"
+	)
+	assert_true(
+		result.find("medieval courtyard") != -1,
+		"retry prompt should include the user prompt from request"
+	)
+
+
+func test_retry_stage_truncates_long_json() -> void:
+	var request: Dictionary = _make_valid_request()
+	var long_json: String = "x".repeat(3000)
+	var errors: Array[Dictionary] = [{"code": "ERR", "message": "test"}]
+	var result: String = _compiler.compile_retry_stage(request, long_json, errors)
+	assert_true(result.length() > 0, "should produce output even with long JSON")
+	assert_true(
+		result.find("x".repeat(2000)) != -1,
+		"should include first 2000 chars of JSON"
+	)
+	assert_true(
+		result.find("x".repeat(2001)) == -1,
+		"JSON beyond 2000 chars should be truncated"
+	)
+
+
+func test_retry_stage_empty_prompt_returns_empty() -> void:
+	var request: Dictionary = _make_valid_request({"user_prompt": ""})
+	var errors: Array[Dictionary] = [{"code": "ERR", "message": "test"}]
+	var result: String = _compiler.compile_retry_stage(request, "{}", errors)
+	assert_eq(result, "", "retry stage with empty prompt should return empty")
+	assert_push_error("Cannot compile an empty prompt")
+
+# endregion

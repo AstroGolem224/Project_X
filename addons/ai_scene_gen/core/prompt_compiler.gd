@@ -88,6 +88,31 @@ func compile_spec_stage(request: Dictionary, plan_text: String) -> String:
 	return _compile_internal(request, plan_section, false)
 
 
+## Compiles a schema-retry prompt that includes the original instructions,
+## the invalid JSON, and the validation errors for the LLM to fix.
+## @param request: Same shape as compile_single_stage
+## @param invalid_json: The raw JSON that failed schema validation (truncated to 2000 chars)
+## @param errors: Array of error dictionaries from the validator
+## @return: Compiled prompt string or empty on error
+func compile_retry_stage(request: Dictionary, invalid_json: String, errors: Array[Dictionary]) -> String:
+	var base_prompt: String = _compile_internal(request, "", false)
+	if base_prompt.is_empty():
+		return ""
+
+	var error_lines: String = ""
+	for err: Dictionary in errors:
+		error_lines += "- [%s] %s\n" % [err.get("code", ""), err.get("message", "")]
+
+	var truncated_json: String = invalid_json.left(2000)
+	var retry_suffix: String = (
+		"\n\nYour previous JSON output was invalid:\n%s\n\n"
+		+ "Validation errors:\n%s\n"
+		+ "Fix ALL the above issues and output ONLY a corrected JSON object."
+	) % [truncated_json, error_lines]
+
+	return base_prompt + retry_suffix
+
+
 ## Returns the raw system instruction template (un-interpolated).
 func get_system_instruction() -> String:
 	return SYSTEM_TEMPLATE

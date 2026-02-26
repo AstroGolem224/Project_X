@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS (Phase 1-6 + Prio 1-7)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY (Phase 1-6 + Prio 1-8)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -24,7 +24,8 @@ Generate-Pipeline laeuft komplett durch (mit MockProvider).
 Two-Stage Generation Mode ist implementiert und getestet.
 Variation Mode und Asset Tag Browser sind implementiert und getestet.
 OpenAI + Anthropic Provider sind implementiert, integriert, und getestet.
-147 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Schema-Retry mit Error-Feedback an LLM ist implementiert und getestet.
+154 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -124,13 +125,13 @@ addons/ai_scene_gen/
   tests/                               # .gdignore vorhanden (Godot scannt nicht)
     test_validator.gd                  # 19 Tests (T01-T13, T38, T39 + extras)
     test_primitive_factory.gd          # 16 Tests (T24, T25 + extras)
-    test_prompt_compiler.gd            # 16 Tests (T14-T16 + variation + extras)
+    test_prompt_compiler.gd            # 20 Tests (T14-T16 + variation + retry-stage + extras)
     test_scene_builder.gd              # 7 Tests (T26, T27 + extras)
     test_asset_resolver.gd             # 11 Tests (T21-T23 + extras)
     test_ollama_provider.gd            # 14 Tests (Provider config, error guards, cancel)
     test_openai_provider.gd            # 19 Tests (Config, error guards, cancel, models, token extraction)
     test_anthropic_provider.gd         # 19 Tests (Config, error guards, cancel, models, token extraction)
-    test_orchestrator.gd               # 12 Tests (Pipeline, cancel, two-stage, correlation)
+    test_orchestrator.gd               # 15 Tests (Pipeline, cancel, two-stage, correlation, schema-retry)
     test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -199,6 +200,11 @@ Two-Stage (>30 Woerter oder CheckBox):
 
 Shared (ab Validation):
   3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
+     Schema-Retry (bis zu MAX_SCHEMA_RETRIES=2 bei Validation-Fehler):
+       3a. PromptCompiler.compile_retry_stage(request, raw_json, errors) -> retry_prompt
+       3b. await LLMProvider.send_request(retry_prompt, ...) -> LLMResponse
+       3c. SceneSpecValidator.validate_json_string(new_raw_json) -> ValidationResult
+       (Cancellation-Guard nach jedem await)
   4. AssetResolver.resolve_nodes(spec, registry) -> ResolvedSpec
   5. SceneBuilder.build(resolved_spec, preview_root) -> BuildResult
   6. PostProcessor.execute_all(root, spec) -> warnings
@@ -218,10 +224,9 @@ Shared (ab Validation):
    verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
 4. ~~**Nur Single-Stage Mode**~~ ✅ GEFIXT — Two-Stage Mode implementiert
    im Orchestrator mit Heuristik (>30 Woerter oder CheckBox).
-5. **Schema-Retry nicht implementiert** — `MAX_SCHEMA_RETRIES = 1` ist definiert
-   aber nicht verwendet. Nur JSON-Parse-Retries (max 2) sind aktiv. Die Architektur
-   beschreibt einen Schema-Retry-Pfad (Error-Details an Prompt anhaengen), der
-   noch implementiert werden muss.
+5. ~~**Schema-Retry nicht implementiert**~~ ✅ GEFIXT — `MAX_SCHEMA_RETRIES = 2`,
+   Orchestrator ruft `compile_retry_stage()` mit Validation-Errors auf und sendet
+   den korrigierten Prompt an den LLM. Cancellation-Guard nach jedem Retry-Await.
 6. ~~**Error-Code Prefixes inkonsistent**~~ ✅ GEFIXT — Dock nutzt jetzt
    `UI_ERR_EMPTY_PROMPT`, `UI_ERR_INVALID_BOUNDS`, `UI_ERR_INVALID_SEED`.
 7. ~~**`get_editor_interface()` deprecated**~~ ✅ GEFIXT — plugin.gd nutzt
@@ -272,7 +277,17 @@ Shared (ab Validation):
 - Plugin-Integration: Provider-Registry (4 Provider: Mock, Ollama, OpenAI, Anthropic),
   API-Key Persistence via EditorSettings, Host-URL nur fuer Ollama
 - 19 Tests pro Provider (Config, Error Guards, Cancel, Models, Token Extraction)
-- **147 Tests, 373 Asserts, 0.62s Runtime, alle PASS**
+
+### Prio 8: Schema-Retry (✅ ERLEDIGT)
+
+- `MAX_SCHEMA_RETRIES = 2` im Orchestrator (bis zu 2 Schema-Retries nach fehlgeschlagener Validation)
+- `PromptCompiler.compile_retry_stage(request, invalid_json, errors)`:
+  Base-Prompt + invalides JSON (truncated 2000 chars) + Validation-Error-Details
+- Orchestrator: Schema-Retry Loop nach Validation mit Cancellation-Guard nach jedem Await
+- Pipeline-Progress: "Schema retry 1/2..." / "Schema retry 2/2..."
+- 3 neue Orchestrator-Tests (Schema-Retry Success, Exhaustion, Error-Feedback im Prompt)
+- 4 neue PromptCompiler-Tests (Error Feedback, Base Prompt, Truncation, Empty Prompt Guard)
+- **154 Tests, 393 Asserts, 0.73s Runtime, alle PASS**
 
 ## GDScript Konventionen (STRIKT EINHALTEN)
 
@@ -323,35 +338,36 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 6. ~~Variation Mode + Asset Tag Browser~~ ✅ ERLEDIGT
 7. ~~CI/CD (GUT + GitHub Actions)~~ ✅ ERLEDIGT
 8. ~~Weitere LLM Provider (OpenAI, Anthropic)~~ ✅ ERLEDIGT
-9. **Schema-Retry** (MAX_SCHEMA_RETRIES nutzen, Error-Details an Prompt anhaengen)
+9. ~~Schema-Retry~~ ✅ ERLEDIGT
+10. **Health-Check UI** (Provider-Konnektivitaet im Dock anzeigen, async health_check)
+11. **Model-Cache Persistence** (persistence.save_model_cache / load_model_cache nutzen)
 
 ---
 
-## Agenten-Prompt: Prio 8 — Schema-Retry
+## Agenten-Prompt: Prio 9 — Health-Check UI + Model Cache
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4 (Module B + E) fuer Orchestrator + Validator Specs.
 
-Prio 1-7 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags, CI/CD, Provider).
-147 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 8 — Schema-Retry implementieren.
+Prio 1-8 sind erledigt. 154 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 9 — Health-Check UI + Model Cache Persistence.
 
-SCHRITT 1: Schema-Retry im Orchestrator
+SCHRITT 1: Health-Check Button im Dock
 
-- `MAX_SCHEMA_RETRIES = 2` (bereits als Konstante definiert aber nicht genutzt)
-- Nach fehlgeschlagener Validation: Error-Details an Prompt anhaengen
-- PromptCompiler: neue Methode `compile_retry_stage(request, raw_json, errors)`
-- Retry-Prompt: "The previous JSON was invalid: {errors}. Fix these issues."
-- Pipeline-Progress Steps fuer Retry anpassen
-- Cancellation-Guard nach jedem Retry-Await
+- Button "Test Connection" neben Provider-Dropdown
+- Ruft provider.health_check() async auf (oder fetch_available_models als Proxy)
+- Zeigt Ergebnis als Label: "Connected (X models)" / "Connection failed: ..."
+- Nur sichtbar wenn Provider needs_api_key() oder needs_base_url()
 
-SCHRITT 2: Tests
+SCHRITT 2: Model Cache Persistence
 
-- Orchestrator: Schema-Retry Test (MockProvider mit absichtlich invalidem JSON beim 1. Call)
-- Lokal testen: Alle 147+ Tests muessen PASS sein
-- HANDOFF.md updaten, committen und pushen
+- persistence.save_model_cache() / load_model_cache() sind schon implementiert
+- Nach erfolgreichem fetch_available_models(): Cache speichern
+- Beim Provider-Switch: Cache laden bevor async fetch
+- Cache TTL: 1h (bereits in load_model_cache als max_age_seconds)
+
+SCHRITT 3: Tests + HANDOFF.md updaten
 ```
 

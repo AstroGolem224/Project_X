@@ -32,7 +32,7 @@ enum PipelineState {
 
 const LOG_CATEGORY: String = "ai_scene_gen.orchestrator"
 const MAX_JSON_RETRIES: int = 2
-const MAX_SCHEMA_RETRIES: int = 1
+const MAX_SCHEMA_RETRIES: int = 2
 
 # ---------------------------------------------------------------------------
 # Private vars
@@ -213,11 +213,39 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 		_logger.record_metric("llm_latency_ms", last_response.get_latency_ms())
 	pipeline_progress.emit(0.30, "Validating SceneSpec...")
 
-	# --- Validate ---
+	# --- Validate (with schema retry) ---
 	_change_state(PipelineState.VALIDATING)
 
 	raw_json = _strip_markdown_fences(raw_json)
 	var validation: RefCounted = _validator.validate_json_string(raw_json)
+	var schema_retries: int = 0
+
+	while not validation.is_valid() and schema_retries < MAX_SCHEMA_RETRIES:
+		schema_retries += 1
+		_log("warning", "schema validation failed, retry %d/%d" % [schema_retries, MAX_SCHEMA_RETRIES])
+
+		var retry_prompt: String = _prompt_compiler.compile_retry_stage(
+			request, raw_json, validation.get_errors()
+		)
+		if retry_prompt.is_empty():
+			break
+
+		pipeline_progress.emit(
+			0.30 + 0.05 * schema_retries,
+			"Schema retry %d/%d..." % [schema_retries, MAX_SCHEMA_RETRIES],
+		)
+
+		var retry_response: RefCounted = await _llm_provider.send_request(
+			retry_prompt, model, 0.0, seed_val
+		)
+		if _correlation_id != my_correlation:
+			return
+		if retry_response == null or not retry_response.is_success():
+			_log("warning", "schema retry %d LLM call failed" % schema_retries)
+			break
+
+		raw_json = _strip_markdown_fences(retry_response.get_raw_body())
+		validation = _validator.validate_json_string(raw_json)
 
 	if not validation.is_valid():
 		_last_errors = validation.get_errors()
