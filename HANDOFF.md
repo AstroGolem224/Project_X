@@ -16,14 +16,15 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD (Phase 1-6 + Prio 1-6)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS (Phase 1-6 + Prio 1-7)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
 Generate-Pipeline laeuft komplett durch (mit MockProvider).
 Two-Stage Generation Mode ist implementiert und getestet.
 Variation Mode und Asset Tag Browser sind implementiert und getestet.
-109 GUT Tests (8 Test-Files) laufen headless, GitHub Actions CI aktiv.
+OpenAI + Anthropic Provider sind implementiert, integriert, und getestet.
+147 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -83,7 +84,7 @@ Provider-Dropdown Verdrahtung
 - `cancel_generation()` emittiert jetzt `ORCH_ERR_CANCELLED` via `pipeline_failed`
 - Typo-Fix: `ORCH_ERR_ST_type_FAILED` -> `ORCH_ERR_STAGE_FAILED`
 
-### File-Inventar (28 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+### File-Inventar (30 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -105,6 +106,8 @@ addons/ai_scene_gen/
     llm_provider.gd                    # C: Abstrakte Basisklasse + HTTP/API-Key/Base-URL Infrastruktur
     mock_provider.gd                   # C: Canned-Response Provider (synchron)
     ollama_provider.gd                 # C: Async Ollama Provider (localhost:11434)
+    openai_provider.gd                 # C: Async OpenAI Provider (Chat Completions, JSON mode)
+    anthropic_provider.gd              # C: Async Anthropic Provider (Messages API)
   assets/
     asset_tag_registry.gd              # F: Tag-Registry (extends Resource, @export)
     asset_resolver.gd                  # F: Tag-Aufloesung mit Fallback
@@ -125,6 +128,8 @@ addons/ai_scene_gen/
     test_scene_builder.gd              # 7 Tests (T26, T27 + extras)
     test_asset_resolver.gd             # 11 Tests (T21-T23 + extras)
     test_ollama_provider.gd            # 14 Tests (Provider config, error guards, cancel)
+    test_openai_provider.gd            # 19 Tests (Config, error guards, cancel, models, token extraction)
+    test_anthropic_provider.gd         # 19 Tests (Config, error guards, cancel, models, token extraction)
     test_orchestrator.gd               # 12 Tests (Pipeline, cancel, two-stage, correlation)
     test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
   docs/
@@ -152,6 +157,8 @@ addons/ai_scene_gen/
 | LLMProvider                | llm/llm_provider.gd                     | RefCounted   |
 | MockProvider               | llm/mock_provider.gd                    | LLMProvider  |
 | OllamaProvider             | llm/ollama_provider.gd                  | LLMProvider  |
+| OpenAIProvider             | llm/openai_provider.gd                  | LLMProvider  |
+| AnthropicProvider          | llm/anthropic_provider.gd               | LLMProvider  |
 | AssetTagRegistry           | assets/asset_tag_registry.gd            | Resource     |
 | AssetResolver              | assets/asset_resolver.gd                | RefCounted   |
 | ProceduralPrimitiveFactory | factory/procedural_primitive_factory.gd | RefCounted   |
@@ -219,8 +226,8 @@ Shared (ab Validation):
    `UI_ERR_EMPTY_PROMPT`, `UI_ERR_INVALID_BOUNDS`, `UI_ERR_INVALID_SEED`.
 7. ~~**`get_editor_interface()` deprecated**~~ ✅ GEFIXT — plugin.gd nutzt
    jetzt `EditorInterface` Singleton (4 Stellen ersetzt).
-8. **Nur MockProvider + OllamaProvider** — OpenAIProvider und AnthropicProvider
-   aus der Architektur sind nicht implementiert.
+8. ~~**Nur MockProvider + OllamaProvider**~~ ✅ GEFIXT — OpenAIProvider und
+   AnthropicProvider sind implementiert und in die Provider-Registry integriert.
 
 ## Fehlende Features (nach Architektur-Doc, priorisiert)
 
@@ -256,12 +263,16 @@ Shared (ab Validation):
 - CI Badge in README.md
 - **109 Tests, 322 Asserts, 0.6s Runtime, alle PASS**
 
-### Prio 7: Weitere LLM Provider (NAECHSTER SCHRITT)
+### Prio 7: Weitere LLM Provider (✅ ERLEDIGT)
 
-- OpenAIProvider: GPT-4o, Chat Completions API, JSON mode
-- AnthropicProvider: Claude, Messages API
-- Plugin-Integration: Provider-Registry, API-Key Persistence
-- Tests fuer beide Provider
+- OpenAIProvider: GPT-4o/GPT-4o-mini, Chat Completions API, JSON mode,
+  Bearer Auth, Token Usage Extraction, Model-Fetch via /v1/models
+- AnthropicProvider: Claude (claude-sonnet-4-20250514), Messages API,
+  x-api-key + anthropic-version Header, Content Block Extraction
+- Plugin-Integration: Provider-Registry (4 Provider: Mock, Ollama, OpenAI, Anthropic),
+  API-Key Persistence via EditorSettings, Host-URL nur fuer Ollama
+- 19 Tests pro Provider (Config, Error Guards, Cancel, Models, Token Extraction)
+- **147 Tests, 373 Asserts, 0.62s Runtime, alle PASS**
 
 ## GDScript Konventionen (STRIKT EINHALTEN)
 
@@ -311,68 +322,36 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 5. ~~Two-Stage Mode im Orchestrator~~ ✅ ERLEDIGT
 6. ~~Variation Mode + Asset Tag Browser~~ ✅ ERLEDIGT
 7. ~~CI/CD (GUT + GitHub Actions)~~ ✅ ERLEDIGT
-8. **Weitere LLM Provider (OpenAI, Anthropic)** (naechster logischer Schritt)
+8. ~~Weitere LLM Provider (OpenAI, Anthropic)~~ ✅ ERLEDIGT
+9. **Schema-Retry** (MAX_SCHEMA_RETRIES nutzen, Error-Details an Prompt anhaengen)
 
 ---
 
-## Agenten-Prompt: Prio 7 — Weitere LLM Provider (OpenAI + Anthropic)
+## Agenten-Prompt: Prio 8 — Schema-Retry
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4 (Module C: LLM Provider) fuer die Provider-Specs.
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4 (Module B + E) fuer Orchestrator + Validator Specs.
 
-Prio 1-6 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags, CI/CD).
-109 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 7 — OpenAI + Anthropic Provider.
+Prio 1-7 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags, CI/CD, Provider).
+147 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 8 — Schema-Retry implementieren.
 
-SCHRITT 1: OpenAIProvider implementieren
+SCHRITT 1: Schema-Retry im Orchestrator
 
-1a. `addons/ai_scene_gen/llm/openai_provider.gd`:
-    - class_name OpenAIProvider extends LLMProvider
-    - API: POST https://api.openai.com/v1/chat/completions
-    - needs_api_key() -> true, needs_base_url() -> false
-    - Modelle: gpt-4o, gpt-4o-mini (hardcoded + fetch via /v1/models)
-    - send_request(): compiled_prompt als system message, JSON mode
-    - Error mapping: 401->LLM_ERR_AUTH, 429->LLM_ERR_RATE_LIMIT, 5xx->LLM_ERR_SERVER
-    - Token usage aus response["usage"] extrahieren
+- `MAX_SCHEMA_RETRIES = 2` (bereits als Konstante definiert aber nicht genutzt)
+- Nach fehlgeschlagener Validation: Error-Details an Prompt anhaengen
+- PromptCompiler: neue Methode `compile_retry_stage(request, raw_json, errors)`
+- Retry-Prompt: "The previous JSON was invalid: {errors}. Fix these issues."
+- Pipeline-Progress Steps fuer Retry anpassen
+- Cancellation-Guard nach jedem Retry-Await
 
-1b. `addons/ai_scene_gen/llm/anthropic_provider.gd`:
-    - class_name AnthropicProvider extends LLMProvider
-    - API: POST https://api.anthropic.com/v1/messages
-    - Header: x-api-key, anthropic-version: 2023-06-01
-    - needs_api_key() -> true, needs_base_url() -> false
-    - Modelle: claude-sonnet-4-20250514 (hardcoded)
-    - send_request(): system + user message format
-    - Error mapping analog zu OpenAI
+SCHRITT 2: Tests
 
-SCHRITT 2: Plugin-Integration
-
-2a. plugin.gd: Provider-Registry erweitern
-    - OpenAIProvider und AnthropicProvider registrieren
-    - API-Key Persistence via EditorSettings (provider-spezifisch)
-    - Dock: API-Key Feld sichtbar wenn Provider needs_api_key()
-
-2b. Dock: Host-URL nur bei Providern mit needs_base_url()
-    - OpenAI/Anthropic: kein Host-URL Feld
-    - Ollama: Host-URL Feld wie bisher
-
-SCHRITT 3: Tests schreiben
-
-3a. `test_openai_provider.gd`:
-    - Config-Tests (name, api_key, base_url)
-    - Error guards (null http_node, empty model, empty api_key)
-    - Token usage extraction
-
-3b. `test_anthropic_provider.gd`:
-    - Analog zu OpenAI tests
-
-3c. Lokal testen: Alle 109+ Tests muessen PASS sein
-3d. HANDOFF.md updaten, committen und pushen
-
-Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
-API Keys NIEMALS in Projekt-Dateien — nur EditorSettings.
-Kein eval(), kein load() auf LLM-Output.
+- Orchestrator: Schema-Retry Test (MockProvider mit absichtlich invalidem JSON beim 1. Call)
+- Lokal testen: Alle 147+ Tests muessen PASS sein
+- HANDOFF.md updaten, committen und pushen
 ```
 

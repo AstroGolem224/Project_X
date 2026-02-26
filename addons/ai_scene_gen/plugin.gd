@@ -79,6 +79,14 @@ func _register_providers() -> void:
 	ollama.set_http_node(_http_request)
 	_providers["Ollama"] = ollama
 
+	var openai: OpenAIProvider = OpenAIProvider.new(_logger)
+	openai.set_http_node(_http_request)
+	_providers["OpenAI"] = openai
+
+	var anthropic: AnthropicProvider = AnthropicProvider.new(_logger)
+	anthropic.set_http_node(_http_request)
+	_providers["Anthropic"] = anthropic
+
 	_orchestrator.set_llm_provider(mock)
 
 
