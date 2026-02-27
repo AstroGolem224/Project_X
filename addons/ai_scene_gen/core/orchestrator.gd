@@ -544,7 +544,8 @@ func _tag_errors_with_correlation(errors: Array[Dictionary]) -> void:
 # ---------------------------------------------------------------------------
 
 ## Injects system-known fields (hashes, seeds, timestamps) that the LLM cannot
-## generate correctly. Runs BEFORE validation so the validator sees clean data.
+## generate correctly, and removes misplaced top-level keys.
+## Runs BEFORE validation so the validator sees clean data.
 func _patch_spec_fields(raw_json: String, request: Dictionary) -> String:
 	var parsed: Variant = JSON.parse_string(raw_json)
 	if parsed == null or not parsed is Dictionary:
@@ -553,6 +554,14 @@ func _patch_spec_fields(raw_json: String, request: Dictionary) -> String:
 	var spec: Dictionary = parsed as Dictionary
 
 	spec["spec_version"] = "1.0.0"
+
+	# Move misplaced top-level fields to their correct locations.
+	if spec.has("generator"):
+		spec.erase("generator")
+	if spec.has("style_preset"):
+		spec.erase("style_preset")
+	if spec.has("timestamp_utc"):
+		spec.erase("timestamp_utc")
 
 	if not spec.has("meta") or not spec["meta"] is Dictionary:
 		spec["meta"] = {}
