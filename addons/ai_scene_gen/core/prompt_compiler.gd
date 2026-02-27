@@ -41,8 +41,14 @@ RULES:
 10. If available_asset_tags are provided, prefer using them in asset_tag
     fields. If a tag does not match, use null and set primitive_shape.
 11. Always include: ground plane, at least 1 light, a camera.
-12. Each node must have a material object with albedo (RGB 0-1 array)
-    and roughness (0-1 float).
+12. Each node must have a material object. Required fields: albedo (RGB
+    0-1 array), roughness (0-1 float). Optional PBR fields: metallic
+    (0-1), emission (RGB 0-1 array), emission_energy (0-16), normal_scale
+    (0-2), transparency (0-1), preset (string).
+    Available material presets: wood, stone, metal, glass, water, plastic,
+    fabric, concrete, brick, sand, grass, dirt, ceramic, rubber, marble,
+    ice, gold, silver, copper, chrome, lava, neon.
+    When preset is set, its defaults are used; explicit fields override.
 13. Set spec_version to "1.0.0". Set generator to "ai_scene_gen".
 14. Do not include code, scripts, file paths, or unsupported fields.
     If unsure, choose safe primitive fallbacks.

@@ -101,6 +101,9 @@ var _template_builtin_count: int = 0
 var _save_template_dialog: ConfirmationDialog
 var _save_template_name_edit: LineEdit
 var _save_template_desc_edit: TextEdit
+var _material_preset_dropdown: OptionButton
+var _material_preview_panel: PanelContainer
+var _material_preview_labels: Dictionary = {}
 var _state: int = DockState.IDLE
 var _generation_start_msec: int = 0
 var _progress_tween: Tween = null
@@ -119,6 +122,7 @@ func _ready() -> void:
 	_build_template_section(root_vbox)
 	_build_prompt_section(root_vbox)
 	_build_settings_section(root_vbox)
+	_build_material_section(root_vbox)
 	_build_asset_tag_section(root_vbox)
 	_build_action_buttons(root_vbox)
 	_build_io_buttons(root_vbox)
@@ -373,6 +377,10 @@ func get_generation_request() -> Dictionary:
 		if check.button_pressed:
 			selected_tags.append(check.text)
 
+	var material_preset_text: String = ""
+	if _material_preset_dropdown != null and _material_preset_dropdown.selected > 0:
+		material_preset_text = _material_preset_dropdown.get_item_text(_material_preset_dropdown.selected)
+
 	return {
 		"user_prompt": _prompt_edit.text,
 		"selected_provider": provider_text,
@@ -383,6 +391,7 @@ func get_generation_request() -> Dictionary:
 		"seed": int(_seed_spinbox.value),
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
 		"available_asset_tags": selected_tags,
+		"material_preset": material_preset_text,
 		"project_constraints": "",
 		"api_key": _api_key_edit.text if _api_key_edit != null else "",
 		"host_url": _host_url_edit.text if _host_url_edit != null else "",
@@ -751,6 +760,99 @@ func _build_template_section(parent: VBoxContainer) -> void:
 	parent.add_child(io_row)
 
 	parent.add_child(HSeparator.new())
+
+
+func _build_material_section(parent: VBoxContainer) -> void:
+	var lbl: Label = Label.new()
+	lbl.text = "Material Preset (hint for LLM)"
+	parent.add_child(lbl)
+
+	_material_preset_dropdown = OptionButton.new()
+	_material_preset_dropdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_material_preset_dropdown.add_item("(none)")
+	var preset_names: Array[String] = [
+		"wood", "stone", "metal", "glass", "water", "plastic", "fabric",
+		"concrete", "brick", "sand", "grass", "dirt", "ceramic", "rubber",
+		"marble", "ice", "gold", "silver", "copper", "chrome", "lava", "neon",
+	]
+	for pname: String in preset_names:
+		_material_preset_dropdown.add_item(pname)
+	_material_preset_dropdown.select(0)
+	parent.add_child(_material_preset_dropdown)
+
+	_material_preview_panel = PanelContainer.new()
+	_material_preview_panel.visible = false
+	var preview_vbox: VBoxContainer = VBoxContainer.new()
+	preview_vbox.add_theme_constant_override("separation", 2)
+
+	var props: Array[String] = ["roughness", "metallic", "transparency", "emission_energy"]
+	for prop: String in props:
+		var row: HBoxContainer = HBoxContainer.new()
+		var key_lbl: Label = Label.new()
+		key_lbl.text = "%s:" % prop
+		key_lbl.custom_minimum_size.x = 120
+		key_lbl.add_theme_font_size_override("font_size", 12)
+		row.add_child(key_lbl)
+		var val_lbl: Label = Label.new()
+		val_lbl.text = "—"
+		val_lbl.add_theme_font_size_override("font_size", 12)
+		val_lbl.add_theme_color_override("font_color", Color(0.7, 0.8, 1.0))
+		row.add_child(val_lbl)
+		preview_vbox.add_child(row)
+		_material_preview_labels[prop] = val_lbl
+
+	_material_preview_panel.add_child(preview_vbox)
+	parent.add_child(_material_preview_panel)
+
+	_material_preset_dropdown.item_selected.connect(_on_material_preset_selected)
+
+
+func _on_material_preset_selected(index: int) -> void:
+	if index <= 0:
+		_material_preview_panel.visible = false
+		return
+
+	var preset_name: String = _material_preset_dropdown.get_item_text(index)
+	var presets: Dictionary = {
+		"wood": {"roughness": 0.85, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"stone": {"roughness": 0.90, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"metal": {"roughness": 0.25, "metallic": 0.95, "transparency": 0.0, "emission_energy": 0.0},
+		"glass": {"roughness": 0.05, "metallic": 0.0, "transparency": 0.8, "emission_energy": 0.0},
+		"water": {"roughness": 0.05, "metallic": 0.0, "transparency": 0.6, "emission_energy": 0.0},
+		"plastic": {"roughness": 0.40, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"fabric": {"roughness": 0.95, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"concrete": {"roughness": 0.92, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"brick": {"roughness": 0.88, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"sand": {"roughness": 0.95, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"grass": {"roughness": 0.90, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"dirt": {"roughness": 0.95, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"ceramic": {"roughness": 0.20, "metallic": 0.05, "transparency": 0.0, "emission_energy": 0.0},
+		"rubber": {"roughness": 0.95, "metallic": 0.0, "transparency": 0.0, "emission_energy": 0.0},
+		"marble": {"roughness": 0.15, "metallic": 0.05, "transparency": 0.0, "emission_energy": 0.0},
+		"ice": {"roughness": 0.08, "metallic": 0.0, "transparency": 0.5, "emission_energy": 0.0},
+		"gold": {"roughness": 0.20, "metallic": 1.0, "transparency": 0.0, "emission_energy": 0.0},
+		"silver": {"roughness": 0.18, "metallic": 1.0, "transparency": 0.0, "emission_energy": 0.0},
+		"copper": {"roughness": 0.30, "metallic": 1.0, "transparency": 0.0, "emission_energy": 0.0},
+		"chrome": {"roughness": 0.02, "metallic": 1.0, "transparency": 0.0, "emission_energy": 0.0},
+		"lava": {"roughness": 0.85, "metallic": 0.0, "transparency": 0.0, "emission_energy": 3.0},
+		"neon": {"roughness": 0.30, "metallic": 0.0, "transparency": 0.0, "emission_energy": 4.0},
+	}
+
+	if preset_name in presets:
+		var p: Dictionary = presets[preset_name] as Dictionary
+		for key: String in _material_preview_labels.keys():
+			var lbl: Label = _material_preview_labels[key] as Label
+			lbl.text = "%.2f" % float(p.get(key, 0.0))
+		_material_preview_panel.visible = true
+	else:
+		_material_preview_panel.visible = false
+
+
+## Returns the currently selected material preset name, or "" if none.
+func get_selected_material_preset() -> String:
+	if _material_preset_dropdown == null or _material_preset_dropdown.selected <= 0:
+		return ""
+	return _material_preset_dropdown.get_item_text(_material_preset_dropdown.selected)
 
 
 func _build_save_template_dialog() -> void:

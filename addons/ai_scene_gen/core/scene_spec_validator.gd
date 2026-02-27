@@ -77,6 +77,17 @@ const _ALLOWED_NODE_FIELDS: Array[String] = [
 	"asset_tag", "children", "metadata"
 ]
 
+const _ALLOWED_MATERIAL_FIELDS: Array[String] = [
+	"albedo", "roughness", "metallic", "emission", "emission_energy",
+	"normal_scale", "transparency", "preset"
+]
+
+const ALLOWED_MATERIAL_PRESETS: Array[String] = [
+	"wood", "stone", "metal", "glass", "water", "plastic", "fabric",
+	"concrete", "brick", "sand", "grass", "dirt", "ceramic", "rubber",
+	"marble", "ice", "gold", "silver", "copper", "chrome", "lava", "neon",
+]
+
 const _POLY_ESTIMATES: Dictionary = {
 	"box": 12,
 	"sphere": 512,
@@ -852,31 +863,8 @@ func _validate_single_node(
 			))
 		else:
 			var mat: Dictionary = node["material"] as Dictionary
-			if mat.has("albedo") and not _is_color3(mat["albedo"]):
-				errors.append(_make_error(
-					"SPEC_ERR_TYPE",
-					"material.albedo must be a color3",
-					"%s.material.albedo" % path,
-					"error",
-					"Provide [r, g, b] with each component 0.0-1.0"
-				))
-			if mat.has("roughness"):
-				if not _is_number(mat["roughness"]):
-					errors.append(_make_error(
-						"SPEC_ERR_TYPE",
-						"material.roughness must be a number",
-						"%s.material.roughness" % path,
-						"error",
-						"Provide roughness as 0.0-1.0"
-					))
-				elif float(mat["roughness"]) < 0.0 or float(mat["roughness"]) > 1.0:
-					errors.append(_make_error(
-						"SPEC_ERR_TYPE",
-						"material.roughness must be 0.0-1.0, got %.4f" % float(mat["roughness"]),
-						"%s.material.roughness" % path,
-						"error",
-						"Set roughness between 0.0 and 1.0"
-					))
+			_validate_material(mat, "%s.material" % path, errors)
+
 
 	# --- collision (optional) ---
 	if node.has("collision") and not node["collision"] is bool:
@@ -944,6 +932,137 @@ func _validate_single_node(
 				child as Dictionary, child_path, limits, bounds,
 				ids, errors, warnings, depth + 1
 			)
+
+
+func _validate_material(mat: Dictionary, path: String, errors: Array[Dictionary]) -> void:
+	if mat.has("albedo") and not _is_color3(mat["albedo"]):
+		errors.append(_make_error(
+			"SPEC_ERR_TYPE",
+			"material.albedo must be a color3",
+			"%s.albedo" % path,
+			"error",
+			"Provide [r, g, b] with each component 0.0-1.0"
+		))
+	if mat.has("roughness"):
+		if not _is_number(mat["roughness"]):
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.roughness must be a number",
+				"%s.roughness" % path,
+				"error",
+				"Provide roughness as 0.0-1.0"
+			))
+		elif float(mat["roughness"]) < 0.0 or float(mat["roughness"]) > 1.0:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.roughness must be 0.0-1.0, got %.4f" % float(mat["roughness"]),
+				"%s.roughness" % path,
+				"error",
+				"Set roughness between 0.0 and 1.0"
+			))
+	if mat.has("metallic"):
+		if not _is_number(mat["metallic"]):
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.metallic must be a number",
+				"%s.metallic" % path,
+				"error",
+				"Provide metallic as 0.0-1.0"
+			))
+		elif float(mat["metallic"]) < 0.0 or float(mat["metallic"]) > 1.0:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.metallic must be 0.0-1.0, got %.4f" % float(mat["metallic"]),
+				"%s.metallic" % path,
+				"error",
+				"Set metallic between 0.0 and 1.0"
+			))
+	if mat.has("emission") and not _is_color3_or_emission(mat["emission"]):
+		errors.append(_make_error(
+			"SPEC_ERR_TYPE",
+			"material.emission must be a color3 (0.0-1.0 per component)",
+			"%s.emission" % path,
+			"error",
+			"Provide [r, g, b] with each component 0.0-1.0"
+		))
+	if mat.has("emission_energy"):
+		if not _is_number(mat["emission_energy"]):
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.emission_energy must be a number",
+				"%s.emission_energy" % path,
+				"error",
+				"Provide emission_energy as 0.0-16.0"
+			))
+		elif float(mat["emission_energy"]) < 0.0 or float(mat["emission_energy"]) > 16.0:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.emission_energy must be 0.0-16.0, got %.4f" % float(mat["emission_energy"]),
+				"%s.emission_energy" % path,
+				"error",
+				"Set emission_energy between 0.0 and 16.0"
+			))
+	if mat.has("normal_scale"):
+		if not _is_number(mat["normal_scale"]):
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.normal_scale must be a number",
+				"%s.normal_scale" % path,
+				"error",
+				"Provide normal_scale as 0.0-2.0"
+			))
+		elif float(mat["normal_scale"]) < 0.0 or float(mat["normal_scale"]) > 2.0:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.normal_scale must be 0.0-2.0, got %.4f" % float(mat["normal_scale"]),
+				"%s.normal_scale" % path,
+				"error",
+				"Set normal_scale between 0.0 and 2.0"
+			))
+	if mat.has("transparency"):
+		if not _is_number(mat["transparency"]):
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.transparency must be a number",
+				"%s.transparency" % path,
+				"error",
+				"Provide transparency as 0.0-1.0"
+			))
+		elif float(mat["transparency"]) < 0.0 or float(mat["transparency"]) > 1.0:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.transparency must be 0.0-1.0, got %.4f" % float(mat["transparency"]),
+				"%s.transparency" % path,
+				"error",
+				"Set transparency between 0.0 and 1.0"
+			))
+	if mat.has("preset"):
+		if not mat["preset"] is String:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"material.preset must be a String",
+				"%s.preset" % path,
+				"error",
+				"Provide preset as a string from: %s" % str(ALLOWED_MATERIAL_PRESETS)
+			))
+		elif (mat["preset"] as String) not in ALLOWED_MATERIAL_PRESETS:
+			errors.append(_make_error(
+				"SPEC_ERR_TYPE",
+				"Unknown material preset '%s', allowed: %s" % [mat["preset"], str(ALLOWED_MATERIAL_PRESETS)],
+				"%s.preset" % path,
+				"error",
+				"Use an allowed material preset"
+			))
+	for key: Variant in mat.keys():
+		var key_str: String = str(key)
+		if key_str not in _ALLOWED_MATERIAL_FIELDS:
+			errors.append(_make_error(
+				"SPEC_ERR_ADDITIONAL_FIELD",
+				"Unknown material field '%s'" % key_str,
+				"%s.%s" % [path, key_str],
+				"error",
+				"Remove the unknown field '%s'" % key_str
+			))
 
 
 func _validate_rules(rules: Dictionary, errors: Array[Dictionary]) -> void:
@@ -1052,6 +1171,21 @@ func _is_vec3_positive(value: Variant) -> bool:
 
 
 func _is_color3(value: Variant) -> bool:
+	if not value is Array:
+		return false
+	var arr: Array = value as Array
+	if arr.size() != 3:
+		return false
+	for component: Variant in arr:
+		if not _is_number(component):
+			return false
+		var f: float = float(component)
+		if f < 0.0 or f > 1.0:
+			return false
+	return true
+
+
+func _is_color3_or_emission(value: Variant) -> bool:
 	if not value is Array:
 		return false
 	var arr: Array = value as Array

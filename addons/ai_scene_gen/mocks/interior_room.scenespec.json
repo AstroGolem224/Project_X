@@ -108,7 +108,7 @@
           "position": [0.0, 0.75, 0.0],
           "rotation_degrees": [0.0, 0.0, 0.0],
           "scale": [1.2, 0.05, 0.8],
-          "material": { "albedo": [0.5, 0.35, 0.2], "roughness": 0.5 },
+          "material": { "albedo": [0.5, 0.35, 0.2], "roughness": 0.5, "metallic": 0.0, "preset": "wood" },
           "collision": true,
           "asset_tag": null,
           "children": [],

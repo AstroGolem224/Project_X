@@ -225,9 +225,15 @@ func _build_node(node: Dictionary, parent: Node3D, depth: int, max_depth: int) -
 			var fb_scale: Array = node.get("_fallback_scale", [1, 1, 1]) as Array
 			var fb_color: Array = node.get("_fallback_color", [0.5, 0.5, 0.5]) as Array
 			var fb_size: Vector3 = _array_to_vector3(fb_scale)
-			instance = _primitive_factory.create_primitive(
-				fb_shape, fb_size, _array_to_color(fb_color), 0.5, false
-			)
+			var fb_mat: Dictionary = {"albedo": fb_color, "roughness": 0.5}
+			if _primitive_factory.has_method("create_primitive_with_material"):
+				instance = _primitive_factory.create_primitive_with_material(
+					fb_shape, fb_size, fb_mat, false
+				)
+			else:
+				instance = _primitive_factory.create_primitive(
+					fb_shape, fb_size, _array_to_color(fb_color), 0.5, false
+				)
 			if instance != null:
 				_triangle_count += _primitive_factory.get_triangle_count(fb_shape, fb_size)
 		elif node.has("primitive_shape") and node["primitive_shape"] != null and _primitive_factory != null:
@@ -235,12 +241,17 @@ func _build_node(node: Dictionary, parent: Node3D, depth: int, max_depth: int) -
 			if shape != "":
 				var size: Vector3 = _array_to_vector3(node.get("scale", [1, 1, 1]) as Array)
 				var mat: Dictionary = node.get("material", {}) as Dictionary
-				var albedo: Array = mat.get("albedo", [0.5, 0.5, 0.5]) as Array
-				var roughness: float = mat.get("roughness", 0.5) as float
 				var collision: bool = node.get("collision", false) as bool
-				instance = _primitive_factory.create_primitive(
-					shape, size, _array_to_color(albedo), roughness, collision
-				)
+				if _primitive_factory.has_method("create_primitive_with_material"):
+					instance = _primitive_factory.create_primitive_with_material(
+						shape, size, mat, collision
+					)
+				else:
+					var albedo: Array = mat.get("albedo", [0.5, 0.5, 0.5]) as Array
+					var roughness: float = mat.get("roughness", 0.5) as float
+					instance = _primitive_factory.create_primitive(
+						shape, size, _array_to_color(albedo), roughness, collision
+					)
 				if instance != null:
 					_triangle_count += _primitive_factory.get_triangle_count(shape, size)
 

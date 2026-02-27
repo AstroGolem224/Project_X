@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES (Phase 1-6 + Prio 1-15)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES + ADVANCED-MATERIALS (Phase 1-6 + Prio 1-16)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -30,7 +30,7 @@ Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
 Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
-247 GUT Tests (14 Test-Files) laufen headless, GitHub Actions CI aktiv.
+281 GUT Tests (15 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -216,7 +216,34 @@ Provider-Dropdown Verdrahtung
   - `_sync_templates_to_dock()` bei Plugin-Start
 - 38 neue Tests in test_templates.gd (Resource, Manager CRUD, Import/Export, Dock UI)
 
-### File-Inventar (35 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 16: Advanced Materials (✅ ERLEDIGT)**
+
+- Material Data Model:
+  - 22 Material Presets definiert (wood, stone, metal, glass, water, plastic, fabric,
+    concrete, brick, sand, grass, dirt, ceramic, rubber, marble, ice, gold, silver,
+    copper, chrome, lava, neon) mit vollstaendigen PBR-Parametern
+  - Erweitertes Material-Schema: metallic (0-1), emission (RGB), emission_energy (0-16),
+    normal_scale (0-2), transparency (0-1), preset (String aus Allowlist)
+  - `create_material_from_spec(mat: Dictionary) -> StandardMaterial3D` im Factory
+  - Preset-Resolution: preset liefert Defaults, explizite Felder ueberschreiben
+- SceneSpec Validator Erweiterung:
+  - `_validate_material()` prueft alle neuen optionalen Felder mit Typ + Range
+  - `_ALLOWED_MATERIAL_FIELDS` Allowlist verhindert unbekannte Material-Felder
+  - `ALLOWED_MATERIAL_PRESETS` Allowlist fuer gueltige Preset-Namen
+  - Volle Rueckwaerts-Kompatibilitaet: bestehende Specs mit nur albedo+roughness weiterhin gueltig
+- SceneBuilder Integration:
+  - `create_primitive_with_material()` ersetzt alten `create_primitive()` Aufruf
+  - Fallback auf alte API wenn neue Methode nicht verfuegbar (Guard via `has_method`)
+  - Metallic, Emission, Transparency werden korrekt auf StandardMaterial3D angewendet
+- Material UI im Dock:
+  - Material Preset Dropdown (22 Presets + "none")
+  - PBR-Parameter Vorschau Panel (roughness, metallic, transparency, emission_energy)
+  - `material_preset` Feld im Generation Request fuer LLM-Kontext
+- Prompt Compiler:
+  - LLM System Instructions erweitert um PBR Material-Felder und Preset-Liste
+- 34 neue Tests in test_materials.gd (Presets, Material Creation, Validator, Builder, Dock)
+
+### File-Inventar (36 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -269,6 +296,7 @@ addons/ai_scene_gen/
     test_benchmark.gd                  # 13 Tests (Build-time benchmarks, linearity, memory profiling, cleanup)
     test_dock.gd                       # 36 Tests (Request shape, flags, tags, states, cancel, progress, errors)
     test_templates.gd                  # 38 Tests (SceneTemplate Resource, Manager CRUD, Dock template UI)
+    test_materials.gd                  # 34 Tests (Material Presets, PBR creation, Validator, Builder, Dock)
     test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -429,8 +457,9 @@ Anthropic Models + MAX_TOKENS + Light-Type Auto-Patch (Post-Prio-15 Bugfixes).
 | 13 | Real LLM Integration Tests (Ollama + OpenAI E2E, skip-guard) | 10 (Integration, pending in CI) |
 | 14 | UI Polish + UX Improvements (progress animation, error cards, shortcuts) | 15 (Dock) |
 | 15 | Scene Templates / Presets (builtin + custom, CRUD, import/export, dock UI) | 38 (Templates) |
+| 16 | Advanced Materials (PBR presets, metallic/emission/transparency, validator, builder, dock UI) | 34 (Materials) |
 
-**Aktuell: 247 Tests, 14 Test-Files, 237 PASS + 10 Pending (Integration skip).**
+**Aktuell: 281 Tests, 15 Test-Files, 271 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -492,7 +521,7 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 15. ~~Real LLM Integration Tests~~ ✅ ERLEDIGT (E2E mit echtem Ollama/OpenAI, skip-guard fuer CI)
 16. ~~UI Polish + UX Improvements~~ ✅ ERLEDIGT (Progress animation, error cards, keyboard shortcuts)
 17. ~~Scene Templates / Presets~~ ✅ ERLEDIGT (SceneTemplate Resource, 3 Built-in, Custom CRUD, Import/Export, Dock UI)
-18. **Advanced Materials** (PBR-Material Support, Texture Mapping, Material Presets)
+18. ~~Advanced Materials~~ ✅ ERLEDIGT (22 PBR Presets, Metallic/Emission/Transparency, Validator, Builder, Dock UI)
 
 ---
 
@@ -506,9 +535,9 @@ Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext
 Prio 1-15 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
 Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
-UI Polish + UX Improvements, Scene Templates / Presets).
-247 GUT Tests (14 Test-Files) laufen headless, GitHub Actions CI aktiv.
-Naechster Schritt: Prio 16 — Advanced Materials.
+UI Polish + UX Improvements, Scene Templates / Presets, Advanced Materials).
+281 GUT Tests (15 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 17 — Texture Mapping / UV Support.
 
 ZIEL: PBR-Material Support fuer realistischere Szenen.
 
