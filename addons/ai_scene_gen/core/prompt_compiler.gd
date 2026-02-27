@@ -49,6 +49,12 @@ RULES:
     fabric, concrete, brick, sand, grass, dirt, ceramic, rubber, marble,
     ice, gold, silver, copper, chrome, lava, neon.
     When preset is set, its defaults are used; explicit fields override.
+    Optional texture fields (only include when the user explicitly
+    requests textures): albedo_texture, normal_texture,
+    roughness_texture, metallic_texture, emission_texture. Each must be
+    a res:// path to an existing project texture file. Do NOT invent
+    texture paths — only use them if the user provides specific paths
+    or explicitly asks for textured materials.
 13. Set spec_version to "1.0.0". Set generator to "ai_scene_gen".
 14. Do not include code, scripts, file paths, or unsupported fields.
     If unsure, choose safe primitive fallbacks.

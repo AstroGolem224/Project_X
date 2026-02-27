@@ -104,6 +104,7 @@ var _save_template_desc_edit: TextEdit
 var _material_preset_dropdown: OptionButton
 var _material_preview_panel: PanelContainer
 var _material_preview_labels: Dictionary = {}
+var _texture_edits: Dictionary = {}
 var _state: int = DockState.IDLE
 var _generation_start_msec: int = 0
 var _progress_tween: Tween = null
@@ -123,6 +124,7 @@ func _ready() -> void:
 	_build_prompt_section(root_vbox)
 	_build_settings_section(root_vbox)
 	_build_material_section(root_vbox)
+	_build_texture_section(root_vbox)
 	_build_asset_tag_section(root_vbox)
 	_build_action_buttons(root_vbox)
 	_build_io_buttons(root_vbox)
@@ -392,6 +394,7 @@ func get_generation_request() -> Dictionary:
 		"bounds_meters": [_bounds_x.value, _bounds_y.value, _bounds_z.value],
 		"available_asset_tags": selected_tags,
 		"material_preset": material_preset_text,
+		"texture_overrides": get_texture_overrides(),
 		"project_constraints": "",
 		"api_key": _api_key_edit.text if _api_key_edit != null else "",
 		"host_url": _host_url_edit.text if _host_url_edit != null else "",
@@ -853,6 +856,71 @@ func get_selected_material_preset() -> String:
 	if _material_preset_dropdown == null or _material_preset_dropdown.selected <= 0:
 		return ""
 	return _material_preset_dropdown.get_item_text(_material_preset_dropdown.selected)
+
+
+func _build_texture_section(parent: VBoxContainer) -> void:
+	var section: VBoxContainer = VBoxContainer.new()
+
+	var toggle_btn: Button = Button.new()
+	toggle_btn.text = "▶ Texture Maps (optional)"
+	toggle_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle_btn.flat = true
+	section.add_child(toggle_btn)
+
+	var content: VBoxContainer = VBoxContainer.new()
+	content.visible = false
+	content.add_theme_constant_override("separation", 4)
+
+	var channels: Array[String] = [
+		"albedo_texture", "normal_texture", "roughness_texture",
+		"metallic_texture", "emission_texture"
+	]
+	var labels: Array[String] = [
+		"Albedo:", "Normal:", "Roughness:", "Metallic:", "Emission:"
+	]
+
+	for i: int in range(channels.size()):
+		var row: HBoxContainer = HBoxContainer.new()
+		var lbl: Label = Label.new()
+		lbl.text = labels[i]
+		lbl.custom_minimum_size.x = 80
+		lbl.add_theme_font_size_override("font_size", 12)
+		row.add_child(lbl)
+
+		var edit: LineEdit = LineEdit.new()
+		edit.placeholder_text = "res://textures/..."
+		edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(edit)
+
+		var clear_btn: Button = Button.new()
+		clear_btn.text = "×"
+		clear_btn.flat = true
+		clear_btn.tooltip_text = "Clear"
+		clear_btn.pressed.connect(edit.clear)
+		row.add_child(clear_btn)
+
+		content.add_child(row)
+		_texture_edits[channels[i]] = edit
+
+	section.add_child(content)
+
+	toggle_btn.pressed.connect(func() -> void:
+		content.visible = not content.visible
+		toggle_btn.text = ("▼ " if content.visible else "▶ ") + "Texture Maps (optional)"
+	)
+
+	parent.add_child(section)
+
+
+## Returns a dictionary of non-empty texture paths from the UI.
+func get_texture_overrides() -> Dictionary:
+	var result: Dictionary = {}
+	for key: Variant in _texture_edits.keys():
+		var edit: LineEdit = _texture_edits[key] as LineEdit
+		var path: String = edit.text.strip_edges()
+		if not path.is_empty():
+			result[str(key)] = path
+	return result
 
 
 func _build_save_template_dialog() -> void:

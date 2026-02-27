@@ -79,7 +79,9 @@ const _ALLOWED_NODE_FIELDS: Array[String] = [
 
 const _ALLOWED_MATERIAL_FIELDS: Array[String] = [
 	"albedo", "roughness", "metallic", "emission", "emission_energy",
-	"normal_scale", "transparency", "preset"
+	"normal_scale", "transparency", "preset",
+	"albedo_texture", "normal_texture", "roughness_texture",
+	"metallic_texture", "emission_texture"
 ]
 
 const ALLOWED_MATERIAL_PRESETS: Array[String] = [
@@ -1053,6 +1055,30 @@ func _validate_material(mat: Dictionary, path: String, errors: Array[Dictionary]
 				"error",
 				"Use an allowed material preset"
 			))
+	var texture_fields: Array[String] = [
+		"albedo_texture", "normal_texture", "roughness_texture",
+		"metallic_texture", "emission_texture"
+	]
+	for tex_field: String in texture_fields:
+		if mat.has(tex_field):
+			if not mat[tex_field] is String:
+				errors.append(_make_error(
+					"SPEC_ERR_TYPE",
+					"material.%s must be a String" % tex_field,
+					"%s.%s" % [path, tex_field],
+					"error",
+					"Provide a res:// path to a texture file"
+				))
+			else:
+				var tex_path: String = mat[tex_field] as String
+				if not tex_path.begins_with("res://"):
+					errors.append(_make_error(
+						"SPEC_ERR_TYPE",
+						"material.%s must start with res://, got '%s'" % [tex_field, tex_path],
+						"%s.%s" % [path, tex_field],
+						"error",
+						"Texture paths must begin with res://"
+					))
 	for key: Variant in mat.keys():
 		var key_str: String = str(key)
 		if key_str not in _ALLOWED_MATERIAL_FIELDS:

@@ -208,6 +208,8 @@ func create_material_from_spec(mat: Dictionary) -> StandardMaterial3D:
 		var alpha: float = clampf(1.0 - transparency, 0.0, 1.0)
 		material.albedo_color.a = alpha
 
+	_apply_textures(material, mat)
+
 	return material
 
 
@@ -258,6 +260,55 @@ func create_primitive_with_material(
 	_log("debug", "primitive_created: %s size=%s" % [shape, str(size)])
 
 	return wrapper
+
+
+## Loads and applies texture maps from a material spec to a StandardMaterial3D.
+## Each texture field is optional; missing files produce a warning, not a crash.
+func _apply_textures(material: StandardMaterial3D, mat: Dictionary) -> void:
+	if mat.has("albedo_texture"):
+		var tex: Texture2D = _load_texture(str(mat["albedo_texture"]))
+		if tex != null:
+			material.albedo_texture = tex
+
+	if mat.has("normal_texture"):
+		var tex: Texture2D = _load_texture(str(mat["normal_texture"]))
+		if tex != null:
+			material.normal_enabled = true
+			material.normal_texture = tex
+
+	if mat.has("roughness_texture"):
+		var tex: Texture2D = _load_texture(str(mat["roughness_texture"]))
+		if tex != null:
+			material.roughness_texture = tex
+			material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GRAYSCALE
+
+	if mat.has("metallic_texture"):
+		var tex: Texture2D = _load_texture(str(mat["metallic_texture"]))
+		if tex != null:
+			material.metallic_texture = tex
+			material.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GRAYSCALE
+
+	if mat.has("emission_texture"):
+		var tex: Texture2D = _load_texture(str(mat["emission_texture"]))
+		if tex != null:
+			material.emission_enabled = true
+			material.emission_texture = tex
+
+
+## Attempts to load a Texture2D from a res:// path.
+## Returns null and logs a warning if the resource doesn't exist or isn't a Texture2D.
+func _load_texture(path: String) -> Texture2D:
+	if path.is_empty() or not path.begins_with("res://"):
+		_log("warning", "invalid texture path: '%s'" % path)
+		return null
+	if not ResourceLoader.exists(path):
+		_log("warning", "texture not found: '%s'" % path)
+		return null
+	var res: Resource = ResourceLoader.load(path)
+	if res is Texture2D:
+		return res as Texture2D
+	_log("warning", "resource at '%s' is not a Texture2D" % path)
+	return null
 
 
 func _arr_to_color(arr: Array) -> Color:

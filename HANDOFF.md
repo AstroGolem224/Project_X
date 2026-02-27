@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES + ADVANCED-MATERIALS (Phase 1-6 + Prio 1-16)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES + ADVANCED-MATERIALS + TEXTURE-MAPPING (Phase 1-6 + Prio 1-17)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -30,7 +30,7 @@ Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
 Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
-281 GUT Tests (15 Test-Files) laufen headless, GitHub Actions CI aktiv.
+298 GUT Tests (16 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -243,7 +243,32 @@ Provider-Dropdown Verdrahtung
   - LLM System Instructions erweitert um PBR Material-Felder und Preset-Liste
 - 34 neue Tests in test_materials.gd (Presets, Material Creation, Validator, Builder, Dock)
 
-### File-Inventar (36 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 17: Texture Mapping / UV Support (✅ ERLEDIGT)**
+
+- Texture Schema Erweiterung:
+  - 5 neue optionale Material-Felder: albedo_texture, normal_texture,
+    roughness_texture, metallic_texture, emission_texture (jeweils res:// String)
+  - Validator prueft Typ (String) und Pfad-Prefix (res://)
+  - `_ALLOWED_MATERIAL_FIELDS` erweitert, volle Rueckwaerts-Kompatibilitaet
+- Texture Loading im Factory:
+  - `_apply_textures()` in ProceduralPrimitiveFactory
+  - `_load_texture()` mit ResourceLoader.exists() Guard
+  - Fallback bei fehlender Textur-Datei (Warning, kein Crash)
+  - Texturen korrekt auf StandardMaterial3D angewendet (albedo_texture,
+    normal_enabled + normal_texture, roughness_texture mit GRAYSCALE channel,
+    metallic_texture mit GRAYSCALE channel, emission_enabled + emission_texture)
+- Texture UI im Dock:
+  - Collapsible "Texture Maps (optional)" Section
+  - 5 LineEdit Felder (Albedo, Normal, Roughness, Metallic, Emission)
+  - Clear-Button pro Kanal
+  - `get_texture_overrides()` public API
+  - `texture_overrides` Dictionary im Generation Request
+- Prompt Compiler:
+  - LLM System Instructions um Textur-Felder erweitert
+  - Explizite Warnung: LLM soll keine Pfade erfinden
+- 17 neue Tests in test_textures.gd (Validator, Factory, Builder, Compiler, Dock, Golden Compat)
+
+### File-Inventar (37 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -297,6 +322,7 @@ addons/ai_scene_gen/
     test_dock.gd                       # 36 Tests (Request shape, flags, tags, states, cancel, progress, errors)
     test_templates.gd                  # 38 Tests (SceneTemplate Resource, Manager CRUD, Dock template UI)
     test_materials.gd                  # 34 Tests (Material Presets, PBR creation, Validator, Builder, Dock)
+    test_textures.gd                   # 17 Tests (Texture schema, loading, fallback, compiler, dock, golden compat)
     test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -458,8 +484,9 @@ Anthropic Models + MAX_TOKENS + Light-Type Auto-Patch (Post-Prio-15 Bugfixes).
 | 14 | UI Polish + UX Improvements (progress animation, error cards, shortcuts) | 15 (Dock) |
 | 15 | Scene Templates / Presets (builtin + custom, CRUD, import/export, dock UI) | 38 (Templates) |
 | 16 | Advanced Materials (PBR presets, metallic/emission/transparency, validator, builder, dock UI) | 34 (Materials) |
+| 17 | Texture Mapping / UV Support (texture schema, loading, fallback, dock UI, compiler) | 17 (Textures) |
 
-**Aktuell: 281 Tests, 15 Test-Files, 271 PASS + 10 Pending (Integration skip).**
+**Aktuell: 298 Tests, 16 Test-Files, 288 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -522,48 +549,47 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 16. ~~UI Polish + UX Improvements~~ ✅ ERLEDIGT (Progress animation, error cards, keyboard shortcuts)
 17. ~~Scene Templates / Presets~~ ✅ ERLEDIGT (SceneTemplate Resource, 3 Built-in, Custom CRUD, Import/Export, Dock UI)
 18. ~~Advanced Materials~~ ✅ ERLEDIGT (22 PBR Presets, Metallic/Emission/Transparency, Validator, Builder, Dock UI)
+19. ~~Texture Mapping / UV Support~~ ✅ ERLEDIGT (5 Textur-Kanaele, Schema-Validation, ResourceLoader, Dock UI, Compiler)
 
 ---
 
-## Agenten-Prompt: Prio 17 — Texture Mapping / UV Support
+## Agenten-Prompt: Prio 18 — Hierarchical Node Groups / Parenting
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-16 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-17 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
 Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
-UI Polish + UX Improvements, Scene Templates / Presets, Advanced Materials).
-281 GUT Tests (15 Test-Files) laufen headless, GitHub Actions CI aktiv.
-Naechster Schritt: Prio 17 — Texture Mapping / UV Support.
+UI Polish + UX Improvements, Scene Templates / Presets, Advanced Materials,
+Texture Mapping / UV Support).
+298 GUT Tests (16 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 18 — Hierarchical Node Groups / Parenting.
 
-ZIEL: Texturen auf Materialien anwenden fuer realistischere Szenen.
-Das Material-System (Prio 16) hat bereits 22 PBR-Presets mit
-metallic/emission/transparency. Jetzt fehlt Textur-Support.
+ZIEL: LLM soll logische Gruppen von Nodes erzeugen koennen
+(z.B. "Tisch" = Node3D-Gruppe mit Platte + 4 Beinen).
+Aktuell werden alle Nodes flach unter dem Root erzeugt.
 
-SCHRITT 1: Texture Schema Erweiterung
-    - Neue optionale Material-Felder: albedo_texture, normal_texture,
-      roughness_texture, metallic_texture, emission_texture (jeweils res:// Pfad)
-    - Validator: Pfade muessen mit res:// beginnen, Typ String
-    - Rueckwaerts-kompatibel: bestehende Specs ohne Texturen weiterhin gueltig
+SCHRITT 1: Schema fuer Node Groups
+    - Nodes koennen optional children haben (bereits im Schema, wird aber
+      vom LLM selten genutzt)
+    - LLM System Instructions explizit um Gruppierungs-Empfehlungen erweitern
+    - Validator: max_tree_depth enforcement verbessern
 
-SCHRITT 2: Texture Loading im Factory
-    - ProceduralPrimitiveFactory: Texturen laden via ResourceLoader
-    - Fallback wenn Textur-Datei nicht existiert (Warning, kein Crash)
-    - Texturen auf StandardMaterial3D anwenden (albedo_texture, normal_map, etc.)
+SCHRITT 2: Builder Group-Support verbessern
+    - SceneBuilder: children-Positionen relativ zum Parent transformieren
+    - Korrekte Scale-Vererbung bei verschachtelten Gruppen
 
-SCHRITT 3: Texture UI im Dock
-    - Optionales Texture-Pfad Eingabefeld oder FilePicker pro Kanal
-    - Vorschau-Thumbnails wenn moeglich
+SCHRITT 3: UI fuer Gruppen
+    - Node-Tree Ansicht in Preview (optional, Info-Label)
+    - Gruppen-Info im Status anzeigen
 
-SCHRITT 4: Prompt Compiler Update
-    - LLM System Instructions um Textur-Felder erweitern
-    - LLM soll Textur-Pfade nur vorschlagen wenn explizit gewuenscht
-
-4b. Lokal testen: Alle 281+ Tests muessen PASS sein (plus neue)
-4c. HANDOFF.md updaten, committen und pushen
+SCHRITT 4: Tests + HANDOFF.md
+    - Neue Tests fuer hierarchische Szenen
+    - Alle 298+ Tests muessen PASS sein
+    - HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
 ```
