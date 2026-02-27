@@ -525,37 +525,45 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 
 ---
 
-## Agenten-Prompt: Prio 16 — Advanced Materials
+## Agenten-Prompt: Prio 17 — Texture Mapping / UV Support
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-15 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-16 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
 Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
 UI Polish + UX Improvements, Scene Templates / Presets, Advanced Materials).
 281 GUT Tests (15 Test-Files) laufen headless, GitHub Actions CI aktiv.
 Naechster Schritt: Prio 17 — Texture Mapping / UV Support.
 
-ZIEL: PBR-Material Support fuer realistischere Szenen.
+ZIEL: Texturen auf Materialien anwenden fuer realistischere Szenen.
+Das Material-System (Prio 16) hat bereits 22 PBR-Presets mit
+metallic/emission/transparency. Jetzt fehlt Textur-Support.
 
-SCHRITT 1: Material Data Model
-    - Erweitertes Material-Schema im SceneSpec (metallic, emission, normal_scale)
-    - Material Presets (wood, stone, metal, glass, etc.)
-    - StandardMaterial3D Erzeugung aus Schema-Daten
+SCHRITT 1: Texture Schema Erweiterung
+    - Neue optionale Material-Felder: albedo_texture, normal_texture,
+      roughness_texture, metallic_texture, emission_texture (jeweils res:// Pfad)
+    - Validator: Pfade muessen mit res:// beginnen, Typ String
+    - Rueckwaerts-kompatibel: bestehende Specs ohne Texturen weiterhin gueltig
 
-SCHRITT 2: Material UI
-    - Material-Preset Browser oder Dropdown
-    - Vorschau der Material-Parameter
+SCHRITT 2: Texture Loading im Factory
+    - ProceduralPrimitiveFactory: Texturen laden via ResourceLoader
+    - Fallback wenn Textur-Datei nicht existiert (Warning, kein Crash)
+    - Texturen auf StandardMaterial3D anwenden (albedo_texture, normal_map, etc.)
 
-SCHRITT 3: SceneBuilder Integration
-    - SceneBuilder nutzt erweiterte Material-Properties
-    - Fallback auf bisheriges albedo+roughness wenn neue Felder fehlen
+SCHRITT 3: Texture UI im Dock
+    - Optionales Texture-Pfad Eingabefeld oder FilePicker pro Kanal
+    - Vorschau-Thumbnails wenn moeglich
 
-3b. Lokal testen: Alle 247+ Tests muessen PASS sein (plus neue)
-3c. HANDOFF.md updaten, committen und pushen
+SCHRITT 4: Prompt Compiler Update
+    - LLM System Instructions um Textur-Felder erweitern
+    - LLM soll Textur-Pfade nur vorschlagen wenn explizit gewuenscht
+
+4b. Lokal testen: Alle 281+ Tests muessen PASS sein (plus neue)
+4c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
 ```
