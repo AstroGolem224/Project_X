@@ -6,6 +6,7 @@ class_name AiSceneGenDock extends Control
 signal generate_requested(request: Dictionary)
 signal apply_requested()
 signal discard_requested()
+signal cancel_requested()
 signal import_requested(path: String)
 signal export_requested(path: String)
 signal provider_changed(provider_name: String)
@@ -24,6 +25,29 @@ const STYLE_PRESETS: Array[String] = ["blockout", "stylized", "realistic-lite"]
 const DEFAULT_BOUNDS_XZ: float = 50.0
 const DEFAULT_BOUNDS_Y: float = 30.0
 const MAX_SEED: int = 2147483647
+
+## Maps known error codes to human-readable fix suggestions used as fallback
+## when the error dictionary itself does not carry a fix_hint.
+const ERROR_HINTS: Dictionary = {
+	"UI_ERR_EMPTY_PROMPT": "Enter a scene description in the prompt field.",
+	"UI_ERR_INVALID_BOUNDS": "Set each bound axis between 0.5 and 1000.",
+	"UI_ERR_INVALID_SEED": "Enter a seed between 0 and 2147483647.",
+	"UI_ERR_NO_SCENE": "Open or create a 3D scene (Node3D root).",
+	"UI_ERR_NOT_3D": "Scene root must be Node3D or a subclass.",
+	"ORCH_ERR_ALREADY_RUNNING": "Wait for the current generation to finish or cancel it.",
+	"ORCH_ERR_STAGE_FAILED": "Check provider connection and prompt, then retry.",
+	"ORCH_ERR_RETRY_EXHAUSTED": "Simplify your prompt or try a different model.",
+	"ORCH_ERR_CANCELLED": "Generation was cancelled. Click Generate to start again.",
+	"LLM_ERR_NETWORK": "Check your network connection and provider URL.",
+	"LLM_ERR_TIMEOUT": "Increase timeout or simplify the prompt.",
+	"LLM_ERR_AUTH": "Verify your API key is correct and has sufficient quota.",
+	"LLM_ERR_RATE_LIMIT": "Wait a moment and retry — you hit the rate limit.",
+	"LLM_ERR_SERVER": "The LLM server returned an error. Try again later.",
+	"LLM_ERR_NON_JSON": "The model returned non-JSON output. Try a different model.",
+	"EXPORT_ERR_NO_SPEC": "Generate a scene before exporting.",
+	"EXPORT_ERR_WRITE": "Check file permissions and path.",
+	"IMPORT_ERR_FAILED": "Check that the file is valid SceneSpec JSON.",
+}
 
 # --- Private vars (UI elements) ---
 
@@ -50,8 +74,11 @@ var _import_button: Button
 var _export_button: Button
 var _status_label: Label
 var _progress_bar: ProgressBar
+var _elapsed_label: Label
 var _error_container: VBoxContainer
 var _error_scroll: ScrollContainer
+var _error_header_row: HBoxContainer
+var _copy_all_errors_button: Button
 var _asset_tag_section: VBoxContainer
 var _asset_tag_container: VBoxContainer
 var _asset_tag_checks: Array[CheckBox] = []
@@ -59,6 +86,9 @@ var _asset_tag_empty_label: Label
 var _test_connection_button: Button
 var _connection_result_label: Label
 var _state: int = DockState.IDLE
+var _generation_start_msec: int = 0
+var _progress_tween: Tween = null
+var _last_errors_text: String = ""
 
 
 func _ready() -> void:
@@ -86,8 +116,44 @@ func _ready() -> void:
 	_seed_random_button.pressed.connect(_on_random_seed_pressed)
 	_provider_dropdown.item_selected.connect(_on_provider_selected)
 	_test_connection_button.pressed.connect(_on_test_connection_pressed)
+	_copy_all_errors_button.pressed.connect(_on_copy_all_errors_pressed)
 
 	set_state(DockState.IDLE)
+	set_process(false)
+
+
+func _process(_delta: float) -> void:
+	if _state != DockState.GENERATING or _generation_start_msec <= 0:
+		return
+	var elapsed_ms: int = Time.get_ticks_msec() - _generation_start_msec
+	var total_secs: int = elapsed_ms / 1000
+	_elapsed_label.text = "%02d:%02d" % [total_secs / 60, total_secs % 60]
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if not (event is InputEventKey):
+		return
+	var key: InputEventKey = event as InputEventKey
+	if not key.pressed or key.echo:
+		return
+
+	if key.keycode == KEY_G and key.ctrl_pressed and not key.shift_pressed and not key.alt_pressed:
+		if _state == DockState.IDLE or _state == DockState.ERROR:
+			_on_generate_pressed()
+			get_viewport().set_input_as_handled()
+	elif key.keycode == KEY_A and key.ctrl_pressed and key.shift_pressed and not key.alt_pressed:
+		if _state == DockState.PREVIEW_READY:
+			_on_apply_pressed()
+			get_viewport().set_input_as_handled()
+	elif key.keycode == KEY_ESCAPE:
+		if _state == DockState.GENERATING:
+			cancel_requested.emit()
+			get_viewport().set_input_as_handled()
+		elif _state == DockState.PREVIEW_READY:
+			_on_discard_pressed()
+			get_viewport().set_input_as_handled()
 
 
 # --- Public methods ---
@@ -99,85 +165,151 @@ func set_state(new_state: int) -> void:
 	match _state:
 		DockState.IDLE:
 			_generate_button.disabled = false
+			_generate_button.text = "Generate Scene (Ctrl+G)"
 			_apply_button.disabled = true
 			_discard_button.disabled = true
 			_import_button.disabled = false
 			_export_button.disabled = false
 			_progress_bar.visible = false
+			_elapsed_label.visible = false
 			_status_label.text = "Ready"
+			_stop_elapsed_timer()
 		DockState.GENERATING:
-			_generate_button.disabled = true
+			_generate_button.disabled = false
+			_generate_button.text = "Cancel (Esc)"
 			_apply_button.disabled = true
 			_discard_button.disabled = true
 			_import_button.disabled = true
 			_export_button.disabled = true
 			_progress_bar.visible = true
+			_elapsed_label.visible = true
 			_status_label.text = "Generating…"
+			_start_elapsed_timer()
 		DockState.PREVIEW_READY:
 			_generate_button.disabled = true
+			_generate_button.text = "Generate Scene (Ctrl+G)"
 			_apply_button.disabled = false
 			_discard_button.disabled = false
 			_import_button.disabled = true
 			_export_button.disabled = false
 			_progress_bar.visible = false
+			_elapsed_label.visible = false
 			_status_label.text = "Preview ready — apply or discard."
+			_stop_elapsed_timer()
 		DockState.ERROR:
 			_generate_button.disabled = false
+			_generate_button.text = "Generate Scene (Ctrl+G)"
 			_apply_button.disabled = true
 			_discard_button.disabled = true
 			_import_button.disabled = false
 			_export_button.disabled = false
 			_progress_bar.visible = false
+			_elapsed_label.visible = false
 			_status_label.text = "Errors occurred."
+			_stop_elapsed_timer()
 
 
-## Display validation / generation errors in the error panel.
-## Each entry expects keys: severity (String), code (String), message (String),
-## and optionally fix_hint (String).
+## Display validation / generation errors in the error panel with collapsible
+## details and per-error / bulk copy-to-clipboard buttons.
 func show_errors(errors: Array[Dictionary]) -> void:
 	clear_errors()
+	var full_text_parts: Array[String] = []
+
 	for err: Dictionary in errors:
 		var severity: String = err.get("severity", "info")
 		var code: String = err.get("code", "")
 		var message: String = err.get("message", "")
 		var fix_hint: String = err.get("fix_hint", "")
+		if fix_hint.is_empty():
+			fix_hint = ERROR_HINTS.get(code, "") as String
 
 		var prefix: String
 		var color: Color
 		match severity:
 			"error":
-				prefix = "[!] "
+				prefix = "ERROR"
 				color = Color(1.0, 0.3, 0.3)
 			"warning":
-				prefix = "[?] "
+				prefix = "WARN"
 				color = Color(1.0, 0.85, 0.2)
 			_:
-				prefix = "[i] "
+				prefix = "INFO"
 				color = Color(0.7, 0.7, 0.7)
 
-		var lbl: Label = Label.new()
-		lbl.text = "%s%s: %s" % [prefix, code, message]
-		lbl.add_theme_color_override("font_color", color)
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_error_container.add_child(lbl)
+		var card: PanelContainer = PanelContainer.new()
+		var card_vbox: VBoxContainer = VBoxContainer.new()
+		card_vbox.add_theme_constant_override("separation", 2)
+		card.add_child(card_vbox)
 
-		if fix_hint != "":
-			var hint_lbl: Label = Label.new()
-			hint_lbl.text = "  Fix: %s" % fix_hint
-			hint_lbl.add_theme_font_size_override("font_size", 12)
-			hint_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-			hint_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			_error_container.add_child(hint_lbl)
+		var header_row: HBoxContainer = HBoxContainer.new()
+		var code_label: Label = Label.new()
+		code_label.text = "[%s] %s" % [prefix, code]
+		code_label.add_theme_color_override("font_color", color)
+		code_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header_row.add_child(code_label)
 
+		var single_err_text: String = "%s: %s" % [code, message]
+		if not fix_hint.is_empty():
+			single_err_text += "\nFix: %s" % fix_hint
+
+		var copy_btn: Button = Button.new()
+		copy_btn.text = "Copy"
+		copy_btn.flat = true
+		copy_btn.add_theme_font_size_override("font_size", 11)
+		copy_btn.pressed.connect(_copy_text_to_clipboard.bind(single_err_text))
+		header_row.add_child(copy_btn)
+		card_vbox.add_child(header_row)
+
+		var msg_label: Label = Label.new()
+		msg_label.text = message
+		msg_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		msg_label.add_theme_font_size_override("font_size", 13)
+		card_vbox.add_child(msg_label)
+
+		if not fix_hint.is_empty():
+			var detail_container: VBoxContainer = VBoxContainer.new()
+			detail_container.visible = false
+
+			var hint_label: Label = Label.new()
+			hint_label.text = "Fix: %s" % fix_hint
+			hint_label.add_theme_font_size_override("font_size", 12)
+			hint_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.5))
+			hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			detail_container.add_child(hint_label)
+
+			var toggle_btn: Button = Button.new()
+			toggle_btn.text = "▶ Show Fix"
+			toggle_btn.flat = true
+			toggle_btn.add_theme_font_size_override("font_size", 11)
+			toggle_btn.pressed.connect(func() -> void:
+				detail_container.visible = not detail_container.visible
+				toggle_btn.text = ("▼ Hide Fix" if detail_container.visible else "▶ Show Fix")
+			)
+			card_vbox.add_child(toggle_btn)
+			card_vbox.add_child(detail_container)
+
+		_error_container.add_child(card)
+		full_text_parts.append(single_err_text)
+
+	_last_errors_text = "\n\n".join(PackedStringArray(full_text_parts))
+	_error_header_row.visible = errors.size() > 0
 	_error_scroll.visible = true
 	set_state(DockState.ERROR)
 
 
-## Update the progress bar and status message during generation.
+## Update the progress bar (animated) and status message during generation.
 func show_progress(percent: float, message: String) -> void:
-	_progress_bar.value = percent * 100.0
+	var target: float = percent * 100.0
+	if is_inside_tree():
+		if _progress_tween != null and _progress_tween.is_valid():
+			_progress_tween.kill()
+		_progress_tween = create_tween()
+		_progress_tween.tween_property(_progress_bar, "value", target, 0.3).set_ease(Tween.EASE_OUT)
+	else:
+		_progress_bar.value = target
 	_status_label.text = message
 	_progress_bar.visible = true
+	_elapsed_label.visible = true
 
 
 ## Populate the provider dropdown from an external list.
@@ -287,6 +419,8 @@ func clear_errors() -> void:
 	for child: Node in _error_container.get_children():
 		child.queue_free()
 	_error_scroll.visible = false
+	_error_header_row.visible = false
+	_last_errors_text = ""
 
 
 ## Updates the asset tag browser with tags from the registry.
@@ -323,6 +457,10 @@ func update_asset_tags(tags: Array[String], registry: Resource = null) -> void:
 
 
 func _on_generate_pressed() -> void:
+	if _state == DockState.GENERATING:
+		cancel_requested.emit()
+		return
+
 	if _prompt_edit.text.strip_edges() == "":
 		var errs: Array[Dictionary] = [{
 			"severity": "error",
@@ -401,6 +539,14 @@ func _on_export_pressed() -> void:
 	export_requested.emit("")
 
 
+func _on_copy_all_errors_pressed() -> void:
+	if not _last_errors_text.is_empty():
+		DisplayServer.clipboard_set(_last_errors_text)
+
+
+# --- Private: helpers ---
+
+
 func _update_connection_test_visibility() -> void:
 	var provider_name: String = ""
 	if _provider_dropdown.selected >= 0:
@@ -411,6 +557,21 @@ func _update_connection_test_visibility() -> void:
 		_test_connection_button.disabled = false
 	_connection_result_label.visible = false
 	_connection_result_label.text = ""
+
+
+func _start_elapsed_timer() -> void:
+	_generation_start_msec = Time.get_ticks_msec()
+	_elapsed_label.text = "00:00"
+	set_process(true)
+
+
+func _stop_elapsed_timer() -> void:
+	set_process(false)
+	_generation_start_msec = 0
+
+
+func _copy_text_to_clipboard(text: String) -> void:
+	DisplayServer.clipboard_set(text)
 
 
 # --- Private: UI builders ---
@@ -503,7 +664,6 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	_variation_check.button_pressed = false
 	parent.add_child(_variation_check)
 
-	# Seed row
 	var seed_row: HBoxContainer = HBoxContainer.new()
 	seed_row.add_child(_make_label("Seed:"))
 	_seed_spinbox = SpinBox.new()
@@ -518,7 +678,6 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	seed_row.add_child(_seed_random_button)
 	parent.add_child(seed_row)
 
-	# Bounds
 	var bounds_lbl: Label = Label.new()
 	bounds_lbl.text = "Bounds (meters):"
 	parent.add_child(bounds_lbl)
@@ -571,20 +730,23 @@ func _build_action_buttons(parent: VBoxContainer) -> void:
 	parent.add_child(HSeparator.new())
 
 	_generate_button = Button.new()
-	_generate_button.text = "Generate Scene"
+	_generate_button.text = "Generate Scene (Ctrl+G)"
+	_generate_button.tooltip_text = "Generate a 3D scene from the prompt (Ctrl+G)"
 	_generate_button.custom_minimum_size.y = 36
 	_generate_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(_generate_button)
 
 	var action_row: HBoxContainer = HBoxContainer.new()
 	_apply_button = Button.new()
-	_apply_button.text = "Apply"
+	_apply_button.text = "Apply (Ctrl+Shift+A)"
+	_apply_button.tooltip_text = "Apply the preview to the scene (Ctrl+Shift+A)"
 	_apply_button.disabled = true
 	_apply_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action_row.add_child(_apply_button)
 
 	_discard_button = Button.new()
-	_discard_button.text = "Discard"
+	_discard_button.text = "Discard (Esc)"
+	_discard_button.tooltip_text = "Discard the preview (Escape)"
 	_discard_button.disabled = true
 	_discard_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action_row.add_child(_discard_button)
@@ -608,9 +770,19 @@ func _build_io_buttons(parent: VBoxContainer) -> void:
 func _build_status_section(parent: VBoxContainer) -> void:
 	parent.add_child(HSeparator.new())
 
+	var status_row: HBoxContainer = HBoxContainer.new()
 	_status_label = Label.new()
 	_status_label.text = "Ready"
-	parent.add_child(_status_label)
+	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_row.add_child(_status_label)
+
+	_elapsed_label = Label.new()
+	_elapsed_label.text = "00:00"
+	_elapsed_label.visible = false
+	_elapsed_label.add_theme_font_size_override("font_size", 12)
+	_elapsed_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	status_row.add_child(_elapsed_label)
+	parent.add_child(status_row)
 
 	_progress_bar = ProgressBar.new()
 	_progress_bar.value = 0
@@ -619,6 +791,20 @@ func _build_status_section(parent: VBoxContainer) -> void:
 
 
 func _build_error_section(parent: VBoxContainer) -> void:
+	_error_header_row = HBoxContainer.new()
+	_error_header_row.visible = false
+	var error_title: Label = Label.new()
+	error_title.text = "Errors"
+	error_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	error_title.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+	_error_header_row.add_child(error_title)
+
+	_copy_all_errors_button = Button.new()
+	_copy_all_errors_button.text = "Copy All"
+	_copy_all_errors_button.flat = true
+	_error_header_row.add_child(_copy_all_errors_button)
+	parent.add_child(_error_header_row)
+
 	_error_scroll = ScrollContainer.new()
 	_error_scroll.custom_minimum_size.y = 80
 	_error_scroll.visible = false

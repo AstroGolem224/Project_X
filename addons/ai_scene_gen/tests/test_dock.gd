@@ -2,8 +2,8 @@
 extends GutTest
 
 ## GUT tests for AiSceneGenDock (Module A).
-## Covers: get_generation_request() shape, variation flag, two-stage flag, asset tags.
-## All tests run headless — no rendering or editor API required.
+## Covers: request shape, variation flag, two-stage flag, asset tags, state
+## transitions, connection test, progress/elapsed, error display, cancel, shortcuts.
 
 var _dock: AiSceneGenDock
 
@@ -123,8 +123,9 @@ func test_set_state_idle() -> void:
 
 func test_set_state_generating() -> void:
 	_dock.set_state(AiSceneGenDock.DockState.GENERATING)
-	assert_true(_dock._generate_button.disabled, "generate should be disabled in GENERATING")
+	assert_false(_dock._generate_button.disabled, "generate (cancel) should be enabled in GENERATING")
 	assert_true(_dock._apply_button.disabled, "apply should be disabled in GENERATING")
+	assert_eq(_dock._generate_button.text, "Cancel (Esc)", "button should show Cancel during GENERATING")
 
 
 func test_set_state_preview_ready() -> void:
@@ -132,6 +133,134 @@ func test_set_state_preview_ready() -> void:
 	assert_true(_dock._generate_button.disabled, "generate should be disabled in PREVIEW_READY")
 	assert_false(_dock._apply_button.disabled, "apply should be enabled in PREVIEW_READY")
 	assert_false(_dock._discard_button.disabled, "discard should be enabled in PREVIEW_READY")
+
+# endregion
+
+# region --- Cancel ---
+
+func test_cancel_signal_emitted_during_generating() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.GENERATING)
+	watch_signals(_dock)
+	_dock._on_generate_pressed()
+	assert_signal_emitted(_dock, "cancel_requested")
+
+
+func test_generate_not_emitted_during_generating() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.GENERATING)
+	watch_signals(_dock)
+	_dock._on_generate_pressed()
+	assert_signal_not_emitted(_dock, "generate_requested")
+
+
+func test_generate_button_text_idle() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.IDLE)
+	assert_eq(_dock._generate_button.text, "Generate Scene (Ctrl+G)")
+
+
+func test_generate_button_text_error() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.ERROR)
+	assert_eq(_dock._generate_button.text, "Generate Scene (Ctrl+G)")
+
+# endregion
+
+# region --- Progress / Elapsed ---
+
+func test_elapsed_label_hidden_in_idle() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.IDLE)
+	assert_false(_dock._elapsed_label.visible, "elapsed label should be hidden in IDLE")
+
+
+func test_elapsed_label_visible_in_generating() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.GENERATING)
+	assert_true(_dock._elapsed_label.visible, "elapsed label should be visible in GENERATING")
+
+
+func test_elapsed_label_hidden_in_error() -> void:
+	_dock.set_state(AiSceneGenDock.DockState.ERROR)
+	assert_false(_dock._elapsed_label.visible, "elapsed label should be hidden in ERROR")
+
+
+func test_show_progress_updates_status() -> void:
+	_dock.show_progress(0.5, "Building scene...")
+	assert_eq(_dock._status_label.text, "Building scene...", "status should show stage message")
+	assert_true(_dock._progress_bar.visible, "progress bar should be visible")
+
+
+func test_show_progress_shows_elapsed() -> void:
+	_dock.show_progress(0.3, "Validating...")
+	assert_true(_dock._elapsed_label.visible, "elapsed label should be visible during progress")
+
+# endregion
+
+# region --- Error display ---
+
+func test_show_errors_creates_panel_containers() -> void:
+	var errs: Array[Dictionary] = [{
+		"severity": "error",
+		"code": "TEST_ERR",
+		"message": "Test error message.",
+		"fix_hint": "Try fixing it.",
+	}]
+	_dock.show_errors(errs)
+	assert_eq(_dock._error_container.get_child_count(), 1, "should create 1 error card")
+	var card: Node = _dock._error_container.get_child(0)
+	assert_true(card is PanelContainer, "error should be in a PanelContainer")
+
+
+func test_show_errors_header_visible() -> void:
+	var errs: Array[Dictionary] = [{
+		"severity": "error",
+		"code": "TEST_ERR",
+		"message": "Test error.",
+	}]
+	_dock.show_errors(errs)
+	assert_true(_dock._error_header_row.visible, "error header row should be visible")
+
+
+func test_clear_errors_hides_header() -> void:
+	var errs: Array[Dictionary] = [{
+		"severity": "error",
+		"code": "TEST_ERR",
+		"message": "Test error.",
+	}]
+	_dock.show_errors(errs)
+	_dock.clear_errors()
+	assert_false(_dock._error_header_row.visible, "error header should be hidden after clear")
+	assert_eq(_dock._last_errors_text, "", "errors text should be empty after clear")
+
+
+func test_error_hints_fallback() -> void:
+	var errs: Array[Dictionary] = [{
+		"severity": "error",
+		"code": "LLM_ERR_AUTH",
+		"message": "Authentication failed.",
+	}]
+	_dock.show_errors(errs)
+	assert_true(
+		_dock._last_errors_text.find("Verify your API key") != -1,
+		"should include fallback fix hint from ERROR_HINTS"
+	)
+
+
+func test_error_hints_dict_has_known_codes() -> void:
+	var expected_codes: Array[String] = [
+		"UI_ERR_EMPTY_PROMPT", "LLM_ERR_NETWORK", "LLM_ERR_AUTH",
+		"ORCH_ERR_CANCELLED", "EXPORT_ERR_NO_SPEC",
+	]
+	for code: String in expected_codes:
+		assert_true(
+			AiSceneGenDock.ERROR_HINTS.has(code),
+			"ERROR_HINTS should contain '%s'" % code
+		)
+
+
+func test_show_errors_multiple_creates_multiple_cards() -> void:
+	var errs: Array[Dictionary] = [
+		{"severity": "error", "code": "ERR_A", "message": "First error."},
+		{"severity": "warning", "code": "WARN_B", "message": "Second warning."},
+	]
+	_dock.show_errors(errs)
+	assert_eq(_dock._error_container.get_child_count(), 2, "should create 2 error cards")
 
 # endregion
 

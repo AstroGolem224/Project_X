@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS (Phase 1-6 + Prio 1-13)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH (Phase 1-6 + Prio 1-14)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -30,7 +30,7 @@ Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
 Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
-194 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
+209 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -162,6 +162,33 @@ Provider-Dropdown Verdrahtung
 - Alle Tests skippen sauber in CI (kein Ollama, kein API Key) als Pending
 - 10 neue Tests (3 Ollama + 3 OpenAI + 4 E2E)
 
+**Prio 14: UI Polish + UX Improvements (✅ ERLEDIGT)**
+
+- Progress Animation:
+  - Animierte ProgressBar mit Tween (smooth 0.3s ease-out Interpolation)
+  - Elapsed-Time Anzeige (MM:SS) neben Status-Label, live-Update via `_process()`
+  - Stage-Labels werden bereits vom Orchestrator via `pipeline_progress` Signal geliefert
+  - Timer startet/stoppt automatisch bei State-Wechsel (GENERATING ↔ andere)
+- Error Display Overhaul:
+  - PanelContainer-basierte Error-Cards statt flacher Labels
+  - Header-Row pro Error: `[SEVERITY] ERROR_CODE` + per-error Copy Button
+  - Collapsible Fix-Hints: Toggle-Button zeigt/versteckt Loesungsvorschlag
+  - `ERROR_HINTS` Dictionary: Fallback-Fix-Hints fuer 18 bekannte Error-Codes
+  - "Copy All" Button kopiert alle Fehlermeldungen in die Zwischenablage
+  - Separator-Header "Errors" + "Copy All" Button ueber der Error-Liste
+- Keyboard Shortcuts:
+  - `Ctrl+G`: Generate Scene (nur in IDLE/ERROR)
+  - `Ctrl+Shift+A`: Apply Preview (nur in PREVIEW_READY)
+  - `Escape`: Cancel (GENERATING) / Discard (PREVIEW_READY)
+  - Shortcuts via `_unhandled_key_input()`, nur aktiv wenn Dock sichtbar
+  - Generate-Button wechselt Text: "Generate Scene (Ctrl+G)" ↔ "Cancel (Esc)"
+  - Apply/Discard Buttons zeigen Shortcut-Hints in Text und Tooltip
+- Cancel-Funktionalitaet:
+  - Neues Signal: `cancel_requested()` auf Dock
+  - plugin.gd: `_on_cancel_requested()` → `orchestrator.cancel_generation()`
+  - Generate-Button dient als Cancel-Button waehrend GENERATING State
+- 15 neue Tests in test_dock.gd (Cancel, Progress, Elapsed, Error Cards, Hints)
+
 ### File-Inventar (33 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
@@ -211,7 +238,7 @@ addons/ai_scene_gen/
     test_orchestrator.gd               # 15 Tests (Pipeline, cancel, two-stage, correlation, schema-retry)
     test_golden.gd                     # 10 Tests (Golden structure/position/material + Snapshot determinism)
     test_benchmark.gd                  # 13 Tests (Build-time benchmarks, linearity, memory profiling, cleanup)
-    test_dock.gd                       # 21 Tests (Request shape, flags, tags, states)
+    test_dock.gd                       # 36 Tests (Request shape, flags, tags, states, cancel, progress, errors)
     test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -334,8 +361,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 11 | Golden/Snapshot Tests (determinism verification via frozen SceneSpec) | 10 (Golden + Snapshot) |
 | 12 | Performance Profiling (build-time benchmarks, memory tracking, cleanup) | 13 (Benchmark + Memory) |
 | 13 | Real LLM Integration Tests (Ollama + OpenAI E2E, skip-guard) | 10 (Integration, pending in CI) |
+| 14 | UI Polish + UX Improvements (progress animation, error cards, shortcuts) | 15 (Dock) |
 
-**Aktuell: 194 Tests, 553 Asserts, 13 Test-Files, 6.1s, 184 PASS + 10 Pending (Integration skip).**
+**Aktuell: 209 Tests, 13 Test-Files, 199 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -395,41 +423,43 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 13. ~~Golden/Snapshot Tests~~ ✅ ERLEDIGT (determinism verification via frozen SceneSpec JSON)
 14. ~~Performance Profiling~~ ✅ ERLEDIGT (build-time benchmarks, memory tracking, cleanup verification)
 15. ~~Real LLM Integration Tests~~ ✅ ERLEDIGT (E2E mit echtem Ollama/OpenAI, skip-guard fuer CI)
-16. **UI Polish + UX Improvements** (Progress animations, better error display, keyboard shortcuts)
+16. ~~UI Polish + UX Improvements~~ ✅ ERLEDIGT (Progress animation, error cards, keyboard shortcuts)
+17. **Scene Templates / Presets** (Vorlagen-System, Favoriten, Quick-Insert)
+18. **Advanced Materials** (PBR-Material Support, Texture Mapping, Material Presets)
 
 ---
 
-## Agenten-Prompt: Prio 14 — UI Polish + UX Improvements
+## Agenten-Prompt: Prio 15 — Scene Templates / Presets
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-13 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-14 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
-Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests).
-194 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
-Naechster Schritt: Prio 14 — UI Polish + UX Improvements.
+Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
+UI Polish + UX Improvements).
+209 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 15 — Scene Templates / Presets.
 
-ZIEL: Dock UI aufpolieren und UX verbessern.
+ZIEL: Vorlagen-System fuer haeufig gebrauchte Szenen-Setups.
 
-SCHRITT 1: Progress Animation
-    - Animierte Fortschrittsanzeige waehrend Pipeline laeuft
-    - Stage-Labels (Generating... Validating... Building...)
-    - Elapsed-Time Anzeige
+SCHRITT 1: Template Data Model
+    - SceneTemplate Resource-Klasse (name, description, prompt, settings)
+    - Built-in Templates (outdoor clearing, interior room, dungeon corridor)
+    - Template-Speicherung als .tres Dateien
 
-SCHRITT 2: Error Display
-    - Bessere Fehleranzeige mit Error-Code und Fix-Hints
-    - Collapsible Error-Details
-    - Copy-to-Clipboard fuer Fehlermeldungen
+SCHRITT 2: Template UI
+    - Template-Dropdown oder -Browser im Dock
+    - "Save as Template" Button (aktuelle Einstellungen als Template speichern)
+    - "Load Template" füllt Prompt + Settings automatisch aus
 
-SCHRITT 3: Keyboard Shortcuts
-    - Ctrl+G: Generate
-    - Ctrl+Shift+A: Apply Preview
-    - Escape: Cancel/Discard
+SCHRITT 3: Template Management
+    - Custom Templates erstellen/editieren/loeschen
+    - Template-Import/Export
 
-3b. Lokal testen: Alle 194+ Tests muessen PASS sein (plus neue)
+3b. Lokal testen: Alle 209+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.

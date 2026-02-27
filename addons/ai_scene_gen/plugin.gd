@@ -122,6 +122,7 @@ func _connect_signals() -> void:
 	_dock.import_requested.connect(_on_import_requested)
 	_dock.export_requested.connect(_on_export_requested)
 	_dock.connection_test_requested.connect(_on_connection_test_requested)
+	_dock.cancel_requested.connect(_on_cancel_requested)
 	_orchestrator.pipeline_state_changed.connect(_on_pipeline_state_changed)
 	_orchestrator.pipeline_progress.connect(_on_pipeline_progress)
 	_orchestrator.pipeline_completed.connect(_on_pipeline_completed)
@@ -144,6 +145,8 @@ func _disconnect_signals() -> void:
 			_dock.export_requested.disconnect(_on_export_requested)
 		if _dock.connection_test_requested.is_connected(_on_connection_test_requested):
 			_dock.connection_test_requested.disconnect(_on_connection_test_requested)
+		if _dock.cancel_requested.is_connected(_on_cancel_requested):
+			_dock.cancel_requested.disconnect(_on_cancel_requested)
 	if _orchestrator != null:
 		if _orchestrator.pipeline_state_changed.is_connected(_on_pipeline_state_changed):
 			_orchestrator.pipeline_state_changed.disconnect(_on_pipeline_state_changed)
@@ -384,6 +387,10 @@ func _on_provider_changed(provider_name: String) -> void:
 	_dock.set_model_list(models)
 	if not models.is_empty():
 		_persistence.save_model_cache(provider_name, models)
+
+
+func _on_cancel_requested() -> void:
+	_orchestrator.cancel_generation()
 
 
 func _on_connection_test_requested(provider_name: String) -> void:
