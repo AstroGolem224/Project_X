@@ -11,6 +11,11 @@ signal import_requested(path: String)
 signal export_requested(path: String)
 signal provider_changed(provider_name: String)
 signal connection_test_requested(provider_name: String)
+signal template_load_requested(template_name: String)
+signal template_save_requested(template_name: String, template_description: String)
+signal template_delete_requested(template_name: String)
+signal template_export_requested(template_name: String)
+signal template_import_requested()
 
 # --- Enums / Constants ---
 
@@ -85,6 +90,17 @@ var _asset_tag_checks: Array[CheckBox] = []
 var _asset_tag_empty_label: Label
 var _test_connection_button: Button
 var _connection_result_label: Label
+var _template_dropdown: OptionButton
+var _template_load_button: Button
+var _template_save_button: Button
+var _template_delete_button: Button
+var _template_export_button: Button
+var _template_import_button: Button
+var _template_names: Array[String] = []
+var _template_builtin_count: int = 0
+var _save_template_dialog: ConfirmationDialog
+var _save_template_name_edit: LineEdit
+var _save_template_desc_edit: TextEdit
 var _state: int = DockState.IDLE
 var _generation_start_msec: int = 0
 var _progress_tween: Tween = null
@@ -100,6 +116,7 @@ func _ready() -> void:
 	add_child(root_vbox)
 
 	_build_header(root_vbox)
+	_build_template_section(root_vbox)
 	_build_prompt_section(root_vbox)
 	_build_settings_section(root_vbox)
 	_build_asset_tag_section(root_vbox)
@@ -107,6 +124,7 @@ func _ready() -> void:
 	_build_io_buttons(root_vbox)
 	_build_status_section(root_vbox)
 	_build_error_section(root_vbox)
+	_build_save_template_dialog()
 
 	_generate_button.pressed.connect(_on_generate_pressed)
 	_apply_button.pressed.connect(_on_apply_pressed)
@@ -117,6 +135,11 @@ func _ready() -> void:
 	_provider_dropdown.item_selected.connect(_on_provider_selected)
 	_test_connection_button.pressed.connect(_on_test_connection_pressed)
 	_copy_all_errors_button.pressed.connect(_on_copy_all_errors_pressed)
+	_template_load_button.pressed.connect(_on_template_load_pressed)
+	_template_save_button.pressed.connect(_on_template_save_pressed)
+	_template_delete_button.pressed.connect(_on_template_delete_pressed)
+	_template_export_button.pressed.connect(_on_template_export_pressed)
+	_template_import_button.pressed.connect(_on_template_import_pressed)
 
 	set_state(DockState.IDLE)
 	set_process(false)
@@ -453,6 +476,59 @@ func update_asset_tags(tags: Array[String], registry: Resource = null) -> void:
 		_asset_tag_container.add_child(check)
 
 
+## Populates the template dropdown with template names.
+## @param names: All template names in display order.
+## @param builtin_count: Number of built-in templates (shown first).
+func set_template_list(names: Array[String], builtin_count: int = 0) -> void:
+	_template_names = names.duplicate()
+	_template_builtin_count = builtin_count
+	_template_dropdown.clear()
+
+	if names.is_empty():
+		_template_dropdown.add_item("(no templates)")
+		_template_load_button.disabled = true
+		_template_delete_button.disabled = true
+		_template_export_button.disabled = true
+		return
+
+	for i: int in range(names.size()):
+		var label: String = names[i]
+		if i < builtin_count:
+			label += "  [built-in]"
+		_template_dropdown.add_item(label)
+
+	_template_dropdown.select(0)
+	_template_load_button.disabled = false
+	_template_export_button.disabled = false
+	_update_template_delete_state()
+
+
+## Applies a template's settings to the dock UI fields.
+func apply_template(template: SceneTemplate) -> void:
+	if template == null:
+		return
+	_prompt_edit.text = template.prompt
+	for i: int in range(_style_dropdown.item_count):
+		if _style_dropdown.get_item_text(i) == template.style_preset:
+			_style_dropdown.select(i)
+			break
+	_two_stage_check.button_pressed = template.two_stage
+	_seed_spinbox.value = template.seed_value
+	_bounds_x.value = template.bounds_x
+	_bounds_y.value = template.bounds_y
+	_bounds_z.value = template.bounds_z
+
+
+## Returns the currently selected template name from the dropdown.
+func get_selected_template_name() -> String:
+	if _template_dropdown.selected < 0 or _template_names.is_empty():
+		return ""
+	var idx: int = _template_dropdown.selected
+	if idx >= _template_names.size():
+		return ""
+	return _template_names[idx]
+
+
 # --- Private: signal handlers ---
 
 
@@ -544,6 +620,41 @@ func _on_copy_all_errors_pressed() -> void:
 		DisplayServer.clipboard_set(_last_errors_text)
 
 
+func _on_template_load_pressed() -> void:
+	var name: String = get_selected_template_name()
+	if not name.is_empty():
+		template_load_requested.emit(name)
+
+
+func _on_template_save_pressed() -> void:
+	_save_template_name_edit.text = ""
+	_save_template_desc_edit.text = ""
+	_save_template_dialog.popup_centered(Vector2i(400, 250))
+
+
+func _on_template_delete_pressed() -> void:
+	var name: String = get_selected_template_name()
+	if not name.is_empty():
+		template_delete_requested.emit(name)
+
+
+func _on_template_export_pressed() -> void:
+	var name: String = get_selected_template_name()
+	if not name.is_empty():
+		template_export_requested.emit(name)
+
+
+func _on_template_import_pressed() -> void:
+	template_import_requested.emit()
+
+
+func _on_save_template_confirmed() -> void:
+	var name: String = _save_template_name_edit.text.strip_edges()
+	var desc: String = _save_template_desc_edit.text.strip_edges()
+	if not name.is_empty():
+		template_save_requested.emit(name, desc)
+
+
 # --- Private: helpers ---
 
 
@@ -574,6 +685,14 @@ func _copy_text_to_clipboard(text: String) -> void:
 	DisplayServer.clipboard_set(text)
 
 
+func _update_template_delete_state() -> void:
+	var idx: int = _template_dropdown.selected
+	if idx < 0 or _template_names.is_empty():
+		_template_delete_button.disabled = true
+		return
+	_template_delete_button.disabled = idx < _template_builtin_count
+
+
 # --- Private: UI builders ---
 
 
@@ -584,6 +703,84 @@ func _build_header(parent: VBoxContainer) -> void:
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	parent.add_child(header)
 	parent.add_child(HSeparator.new())
+
+
+func _build_template_section(parent: VBoxContainer) -> void:
+	var lbl: Label = Label.new()
+	lbl.text = "Templates"
+	parent.add_child(lbl)
+	parent.add_child(HSeparator.new())
+
+	_template_dropdown = OptionButton.new()
+	_template_dropdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_template_dropdown.item_selected.connect(func(_idx: int) -> void:
+		_update_template_delete_state()
+	)
+	parent.add_child(_template_dropdown)
+
+	var btn_row: HBoxContainer = HBoxContainer.new()
+	_template_load_button = Button.new()
+	_template_load_button.text = "Load"
+	_template_load_button.tooltip_text = "Fill prompt and settings from the selected template"
+	_template_load_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_row.add_child(_template_load_button)
+
+	_template_save_button = Button.new()
+	_template_save_button.text = "Save As…"
+	_template_save_button.tooltip_text = "Save current prompt and settings as a new template"
+	_template_save_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_row.add_child(_template_save_button)
+
+	_template_delete_button = Button.new()
+	_template_delete_button.text = "Delete"
+	_template_delete_button.tooltip_text = "Delete the selected custom template"
+	_template_delete_button.disabled = true
+	btn_row.add_child(_template_delete_button)
+	parent.add_child(btn_row)
+
+	var io_row: HBoxContainer = HBoxContainer.new()
+	_template_export_button = Button.new()
+	_template_export_button.text = "Export Template"
+	_template_export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	io_row.add_child(_template_export_button)
+
+	_template_import_button = Button.new()
+	_template_import_button.text = "Import Template"
+	_template_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	io_row.add_child(_template_import_button)
+	parent.add_child(io_row)
+
+	parent.add_child(HSeparator.new())
+
+
+func _build_save_template_dialog() -> void:
+	_save_template_dialog = ConfirmationDialog.new()
+	_save_template_dialog.title = "Save as Template"
+	_save_template_dialog.ok_button_text = "Save"
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+
+	var name_lbl: Label = Label.new()
+	name_lbl.text = "Template Name:"
+	vbox.add_child(name_lbl)
+
+	_save_template_name_edit = LineEdit.new()
+	_save_template_name_edit.placeholder_text = "e.g. My Forest Scene"
+	vbox.add_child(_save_template_name_edit)
+
+	var desc_lbl: Label = Label.new()
+	desc_lbl.text = "Description (optional):"
+	vbox.add_child(desc_lbl)
+
+	_save_template_desc_edit = TextEdit.new()
+	_save_template_desc_edit.custom_minimum_size = Vector2(350, 80)
+	_save_template_desc_edit.placeholder_text = "Describe what this template generates…"
+	vbox.add_child(_save_template_desc_edit)
+
+	_save_template_dialog.add_child(vbox)
+	_save_template_dialog.confirmed.connect(_on_save_template_confirmed)
+	add_child(_save_template_dialog)
 
 
 func _build_prompt_section(parent: VBoxContainer) -> void:

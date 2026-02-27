@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH (Phase 1-6 + Prio 1-14)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES (Phase 1-6 + Prio 1-15)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -30,7 +30,7 @@ Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
 Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
-209 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
+247 GUT Tests (14 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -189,7 +189,34 @@ Provider-Dropdown Verdrahtung
   - Generate-Button dient als Cancel-Button waehrend GENERATING State
 - 15 neue Tests in test_dock.gd (Cancel, Progress, Elapsed, Error Cards, Hints)
 
-### File-Inventar (33 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 15: Scene Templates / Presets (✅ ERLEDIGT)**
+
+- Template Data Model:
+  - `SceneTemplate` Resource-Klasse (template_name, description, prompt, style_preset, two_stage, seed_value, bounds_x/y/z, is_builtin)
+  - `from_request()` / `to_request_overrides()` / `duplicate_template()` API
+  - Template-Speicherung als .tres Dateien via ResourceSaver/ResourceLoader
+- SceneTemplateManager:
+  - 3 Built-in Templates: "Outdoor Clearing", "Interior Room", "Dungeon Corridor"
+  - Custom Template CRUD: save, delete, overwrite, list
+  - Template Import/Export als .tres Dateien
+  - Builtin-Protection (cannot delete built-in templates)
+  - Filename-Sanitization fuer Custom Templates
+  - Auto-Load custom templates from `res://addons/ai_scene_gen/templates/custom/`
+- Template UI im Dock:
+  - Template-Dropdown mit "[built-in]" Labels
+  - "Load" Button fuellt Prompt + alle Settings automatisch aus
+  - "Save As…" Button mit Name/Description Dialog (ConfirmationDialog)
+  - "Delete" Button (nur fuer Custom Templates aktiv)
+  - "Export Template" / "Import Template" Buttons mit EditorFileDialog (.tres Filter)
+  - Delete-Button auto-disabled fuer Built-in Templates
+- Plugin Wiring:
+  - 5 neue Dock-Signals (load, save, delete, export, import)
+  - TemplateManager Lifecycle in _enter_tree / _exit_tree
+  - Template EditorFileDialogs (export + import)
+  - `_sync_templates_to_dock()` bei Plugin-Start
+- 38 neue Tests in test_templates.gd (Resource, Manager CRUD, Import/Export, Dock UI)
+
+### File-Inventar (35 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -207,6 +234,7 @@ addons/ai_scene_gen/
     validation_result.gd               # @tool, ValidationResult
     build_result.gd                    # @tool, BuildResult
     resolved_spec.gd                   # @tool, ResolvedSpec
+    scene_template.gd                  # @tool, SceneTemplate Resource (name, prompt, settings)
   llm/
     llm_provider.gd                    # C: Abstrakte Basisklasse + HTTP/API-Key/Base-URL Infrastruktur
     mock_provider.gd                   # C: Canned-Response Provider (synchron)
@@ -223,6 +251,7 @@ addons/ai_scene_gen/
   util/
     logger.gd                          # @tool, AiSceneGenLogger mit 4 Log-Levels + Metrics
     persistence.gd                     # L: Settings/SceneSpec I/O + API-Key/Host-URL via EditorSettings
+    template_manager.gd                # SceneTemplateManager (builtin + custom CRUD, import/export)
   mocks/
     outdoor_clearing.scenespec.json    # Example 1 (Outdoor Clearing mit Baum, Fels, Pfad)
     interior_room.scenespec.json       # Example 2 (Raum mit Waenden und Tisch)
@@ -239,6 +268,7 @@ addons/ai_scene_gen/
     test_golden.gd                     # 10 Tests (Golden structure/position/material + Snapshot determinism)
     test_benchmark.gd                  # 13 Tests (Build-time benchmarks, linearity, memory profiling, cleanup)
     test_dock.gd                       # 36 Tests (Request shape, flags, tags, states, cancel, progress, errors)
+    test_templates.gd                  # 38 Tests (SceneTemplate Resource, Manager CRUD, Dock template UI)
     test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -279,6 +309,8 @@ addons/ai_scene_gen/
 | ValidationResult           | types/validation_result.gd              | RefCounted   |
 | BuildResult                | types/build_result.gd                   | RefCounted   |
 | ResolvedSpec               | types/resolved_spec.gd                  | RefCounted   |
+| SceneTemplate              | types/scene_template.gd                 | Resource     |
+| SceneTemplateManager       | util/template_manager.gd                | RefCounted   |
 
 
 ### Signal-Verdrahtung (plugin.gd)
@@ -292,6 +324,11 @@ AiSceneGenDock.provider_changed    -> plugin._on_provider_changed    -> orchestr
 AiSceneGenDock.import_requested    -> plugin._on_import_requested    -> EditorFileDialog -> persistence.import_spec -> orchestrator.rebuild_from_spec
 AiSceneGenDock.export_requested    -> plugin._on_export_requested    -> EditorFileDialog -> persistence.export_spec
 AiSceneGenDock.connection_test_requested -> plugin._on_connection_test_requested -> await fetch_available_models -> dock.show_connection_result
+AiSceneGenDock.template_load_requested   -> plugin._on_template_load_requested   -> template_manager.get_template -> dock.apply_template
+AiSceneGenDock.template_save_requested   -> plugin._on_template_save_requested   -> template_manager.save_custom_template -> sync_templates_to_dock
+AiSceneGenDock.template_delete_requested -> plugin._on_template_delete_requested -> template_manager.delete_custom_template -> sync_templates_to_dock
+AiSceneGenDock.template_export_requested -> plugin._on_template_export_requested -> EditorFileDialog -> template_manager.export_template
+AiSceneGenDock.template_import_requested -> plugin._on_template_import_requested -> EditorFileDialog -> template_manager.import_template -> sync_templates_to_dock
 orchestrator.pipeline_state_changed -> plugin._on_pipeline_state_changed -> dock.set_state()
 orchestrator.pipeline_progress      -> plugin._on_pipeline_progress      -> dock.show_progress()
 orchestrator.pipeline_completed     -> plugin._on_pipeline_completed     -> dock.show_progress(1.0)
@@ -378,8 +415,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 12 | Performance Profiling (build-time benchmarks, memory tracking, cleanup) | 13 (Benchmark + Memory) |
 | 13 | Real LLM Integration Tests (Ollama + OpenAI E2E, skip-guard) | 10 (Integration, pending in CI) |
 | 14 | UI Polish + UX Improvements (progress animation, error cards, shortcuts) | 15 (Dock) |
+| 15 | Scene Templates / Presets (builtin + custom, CRUD, import/export, dock UI) | 38 (Templates) |
 
-**Aktuell: 209 Tests, 13 Test-Files, 199 PASS + 10 Pending (Integration skip).**
+**Aktuell: 247 Tests, 14 Test-Files, 237 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -440,42 +478,41 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 14. ~~Performance Profiling~~ ✅ ERLEDIGT (build-time benchmarks, memory tracking, cleanup verification)
 15. ~~Real LLM Integration Tests~~ ✅ ERLEDIGT (E2E mit echtem Ollama/OpenAI, skip-guard fuer CI)
 16. ~~UI Polish + UX Improvements~~ ✅ ERLEDIGT (Progress animation, error cards, keyboard shortcuts)
-17. **Scene Templates / Presets** (Vorlagen-System, Favoriten, Quick-Insert)
+17. ~~Scene Templates / Presets~~ ✅ ERLEDIGT (SceneTemplate Resource, 3 Built-in, Custom CRUD, Import/Export, Dock UI)
 18. **Advanced Materials** (PBR-Material Support, Texture Mapping, Material Presets)
 
 ---
 
-## Agenten-Prompt: Prio 15 — Scene Templates / Presets
+## Agenten-Prompt: Prio 16 — Advanced Materials
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-14 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-15 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
 Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
-UI Polish + UX Improvements).
-209 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
-Naechster Schritt: Prio 15 — Scene Templates / Presets.
+UI Polish + UX Improvements, Scene Templates / Presets).
+247 GUT Tests (14 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 16 — Advanced Materials.
 
-ZIEL: Vorlagen-System fuer haeufig gebrauchte Szenen-Setups.
+ZIEL: PBR-Material Support fuer realistischere Szenen.
 
-SCHRITT 1: Template Data Model
-    - SceneTemplate Resource-Klasse (name, description, prompt, settings)
-    - Built-in Templates (outdoor clearing, interior room, dungeon corridor)
-    - Template-Speicherung als .tres Dateien
+SCHRITT 1: Material Data Model
+    - Erweitertes Material-Schema im SceneSpec (metallic, emission, normal_scale)
+    - Material Presets (wood, stone, metal, glass, etc.)
+    - StandardMaterial3D Erzeugung aus Schema-Daten
 
-SCHRITT 2: Template UI
-    - Template-Dropdown oder -Browser im Dock
-    - "Save as Template" Button (aktuelle Einstellungen als Template speichern)
-    - "Load Template" füllt Prompt + Settings automatisch aus
+SCHRITT 2: Material UI
+    - Material-Preset Browser oder Dropdown
+    - Vorschau der Material-Parameter
 
-SCHRITT 3: Template Management
-    - Custom Templates erstellen/editieren/loeschen
-    - Template-Import/Export
+SCHRITT 3: SceneBuilder Integration
+    - SceneBuilder nutzt erweiterte Material-Properties
+    - Fallback auf bisheriges albedo+roughness wenn neue Felder fehlen
 
-3b. Lokal testen: Alle 209+ Tests muessen PASS sein (plus neue)
+3b. Lokal testen: Alle 247+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.

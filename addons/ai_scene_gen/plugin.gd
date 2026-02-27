@@ -11,11 +11,15 @@ var _dock: Control = null
 var _orchestrator: RefCounted = null
 var _persistence: RefCounted = null
 var _logger: RefCounted = null
+var _template_manager: SceneTemplateManager = null
 var _http_request: HTTPRequest = null
 var _providers: Dictionary = {}
 var _provider_switch_id: int = 0
 var _import_dialog: EditorFileDialog = null
 var _export_dialog: EditorFileDialog = null
+var _template_export_dialog: EditorFileDialog = null
+var _template_import_dialog: EditorFileDialog = null
+var _pending_template_export_name: String = ""
 
 
 func _enter_tree() -> void:
@@ -33,6 +37,8 @@ func _enter_tree() -> void:
 	_orchestrator = AiSceneGenOrchestrator.new(_logger)
 	_register_providers()
 
+	_template_manager = SceneTemplateManager.new(_logger)
+
 	_setup_file_dialogs()
 
 	_dock = AiSceneGenDock.new()
@@ -43,6 +49,7 @@ func _enter_tree() -> void:
 	_connect_signals()
 	_load_settings_to_ui()
 	_sync_asset_tags_to_dock()
+	_sync_templates_to_dock()
 
 	_logger.log_info(LOG_CATEGORY, "%s v%s loaded." % [PLUGIN_NAME, PLUGIN_VERSION])
 
@@ -59,6 +66,13 @@ func _exit_tree() -> void:
 	if _export_dialog != null:
 		_export_dialog.queue_free()
 		_export_dialog = null
+	if _template_export_dialog != null:
+		_template_export_dialog.queue_free()
+		_template_export_dialog = null
+	if _template_import_dialog != null:
+		_template_import_dialog.queue_free()
+		_template_import_dialog = null
+	_template_manager = null
 	if _http_request != null:
 		_http_request.cancel_request()
 		_http_request.queue_free()
@@ -123,6 +137,11 @@ func _connect_signals() -> void:
 	_dock.export_requested.connect(_on_export_requested)
 	_dock.connection_test_requested.connect(_on_connection_test_requested)
 	_dock.cancel_requested.connect(_on_cancel_requested)
+	_dock.template_load_requested.connect(_on_template_load_requested)
+	_dock.template_save_requested.connect(_on_template_save_requested)
+	_dock.template_delete_requested.connect(_on_template_delete_requested)
+	_dock.template_export_requested.connect(_on_template_export_requested)
+	_dock.template_import_requested.connect(_on_template_import_requested)
 	_orchestrator.pipeline_state_changed.connect(_on_pipeline_state_changed)
 	_orchestrator.pipeline_progress.connect(_on_pipeline_progress)
 	_orchestrator.pipeline_completed.connect(_on_pipeline_completed)
@@ -147,6 +166,16 @@ func _disconnect_signals() -> void:
 			_dock.connection_test_requested.disconnect(_on_connection_test_requested)
 		if _dock.cancel_requested.is_connected(_on_cancel_requested):
 			_dock.cancel_requested.disconnect(_on_cancel_requested)
+		if _dock.template_load_requested.is_connected(_on_template_load_requested):
+			_dock.template_load_requested.disconnect(_on_template_load_requested)
+		if _dock.template_save_requested.is_connected(_on_template_save_requested):
+			_dock.template_save_requested.disconnect(_on_template_save_requested)
+		if _dock.template_delete_requested.is_connected(_on_template_delete_requested):
+			_dock.template_delete_requested.disconnect(_on_template_delete_requested)
+		if _dock.template_export_requested.is_connected(_on_template_export_requested):
+			_dock.template_export_requested.disconnect(_on_template_export_requested)
+		if _dock.template_import_requested.is_connected(_on_template_import_requested):
+			_dock.template_import_requested.disconnect(_on_template_import_requested)
 	if _orchestrator != null:
 		if _orchestrator.pipeline_state_changed.is_connected(_on_pipeline_state_changed):
 			_orchestrator.pipeline_state_changed.disconnect(_on_pipeline_state_changed)
@@ -260,6 +289,22 @@ func _setup_file_dialogs() -> void:
 	_export_dialog.title = "Export SceneSpec"
 	_export_dialog.file_selected.connect(_on_export_file_selected)
 	add_child(_export_dialog)
+
+	_template_export_dialog = EditorFileDialog.new()
+	_template_export_dialog.file_mode = EditorFileDialog.FILE_MODE_SAVE_FILE
+	_template_export_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	_template_export_dialog.add_filter("*.tres", "Scene Template")
+	_template_export_dialog.title = "Export Template"
+	_template_export_dialog.file_selected.connect(_on_template_export_file_selected)
+	add_child(_template_export_dialog)
+
+	_template_import_dialog = EditorFileDialog.new()
+	_template_import_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
+	_template_import_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	_template_import_dialog.add_filter("*.tres", "Scene Template")
+	_template_import_dialog.title = "Import Template"
+	_template_import_dialog.file_selected.connect(_on_template_import_file_selected)
+	add_child(_template_import_dialog)
 
 
 func _on_import_requested(_path: String) -> void:
@@ -391,6 +436,79 @@ func _on_provider_changed(provider_name: String) -> void:
 
 func _on_cancel_requested() -> void:
 	_orchestrator.cancel_generation()
+
+
+func _sync_templates_to_dock() -> void:
+	if _dock == null or _template_manager == null:
+		return
+	var names: Array[String] = _template_manager.get_template_names()
+	_dock.set_template_list(names, _template_manager.get_builtin_count())
+
+
+func _on_template_load_requested(template_name: String) -> void:
+	if _template_manager == null or _dock == null:
+		return
+	var template: SceneTemplate = _template_manager.get_template(template_name)
+	if template != null:
+		_dock.apply_template(template)
+		_logger.log_info(LOG_CATEGORY, "loaded template '%s'" % template_name)
+
+
+func _on_template_save_requested(template_name: String, template_description: String) -> void:
+	if _template_manager == null or _dock == null:
+		return
+	var template: SceneTemplate = SceneTemplate.new()
+	template.template_name = template_name
+	template.description = template_description
+	template.from_request(_dock.get_generation_request())
+	var err: int = _template_manager.save_custom_template(template)
+	if err == OK:
+		_sync_templates_to_dock()
+		_logger.log_info(LOG_CATEGORY, "saved template '%s'" % template_name)
+	else:
+		_logger.log_warning(LOG_CATEGORY, "failed to save template '%s': %d" % [template_name, err])
+
+
+func _on_template_delete_requested(template_name: String) -> void:
+	if _template_manager == null:
+		return
+	var err: int = _template_manager.delete_custom_template(template_name)
+	if err == OK:
+		_sync_templates_to_dock()
+		_logger.log_info(LOG_CATEGORY, "deleted template '%s'" % template_name)
+
+
+func _on_template_export_requested(template_name: String) -> void:
+	_pending_template_export_name = template_name
+	if _template_export_dialog != null:
+		_template_export_dialog.popup_centered_ratio(0.6)
+
+
+func _on_template_import_requested() -> void:
+	if _template_import_dialog != null:
+		_template_import_dialog.popup_centered_ratio(0.6)
+
+
+func _on_template_export_file_selected(path: String) -> void:
+	if _template_manager == null:
+		return
+	var err: int = _template_manager.export_template(_pending_template_export_name, path)
+	if err == OK:
+		_logger.log_info(LOG_CATEGORY, "exported template '%s' to %s" % [_pending_template_export_name, path])
+	else:
+		_logger.log_warning(LOG_CATEGORY, "failed to export template: %d" % err)
+	_pending_template_export_name = ""
+
+
+func _on_template_import_file_selected(path: String) -> void:
+	if _template_manager == null:
+		return
+	var err: int = _template_manager.import_template(path)
+	if err == OK:
+		_sync_templates_to_dock()
+		_logger.log_info(LOG_CATEGORY, "imported template from %s" % path)
+	else:
+		_logger.log_warning(LOG_CATEGORY, "failed to import template from %s: %d" % [path, err])
 
 
 func _on_connection_test_requested(provider_name: String) -> void:
