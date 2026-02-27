@@ -14,7 +14,7 @@ const DEFAULT_MODELS: Array[String] = [
 	"claude-opus-4-20250514",
 	"claude-haiku-3-5-20241022",
 ]
-const MAX_TOKENS: int = 4096
+const MAX_TOKENS: int = 16384
 
 var _cached_models: Array[String] = []
 
