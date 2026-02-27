@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS (Phase 1-6 + Prio 1-12)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS (Phase 1-6 + Prio 1-13)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -29,7 +29,8 @@ Health-Check UI + Model Cache Persistence sind implementiert und getestet.
 Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) ist komplett.
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
-184 GUT Tests (12 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
+194 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -138,7 +139,30 @@ Provider-Dropdown Verdrahtung
   - Build-Time skaliert linear mit Node-Count
 - 13 neue Tests (6 Benchmark + 7 Memory)
 
-### File-Inventar (32 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 13: Real LLM Integration Tests (✅ ERLEDIGT)**
+
+- Integration Test Infrastructure (`test_integration.gd`):
+  - Optionale Tests mit async Skip-Guard: ueberspringen wenn kein Endpunkt erreichbar
+  - Ollama-Guard: HTTP GET auf localhost:11434/api/tags, cached nach erstem Check
+  - OpenAI-Guard: OPENAI_API_KEY env var + /v1/models Endpoint-Pruefung, cached
+  - Erster verfuegbarer Ollama-Model wird automatisch erkannt und verwendet
+- Ollama Connectivity Tests (3):
+  - Reachability + Model-Erkennung
+  - fetch_available_models() gegen echte Ollama-Instanz
+  - send_request() Roundtrip mit einfachem JSON-Prompt
+- OpenAI Connectivity Tests (3):
+  - Reachability via API Key + Endpoint
+  - fetch_available_models() gegen echte OpenAI API (GPT-Modelle)
+  - send_request() Roundtrip mit gpt-4o-mini
+- E2E Pipeline Tests (4):
+  - Voller Pipeline-Durchlauf mit echtem Ollama (Orchestrator → Validator → Builder)
+  - Voller Pipeline-Durchlauf mit echtem OpenAI (Orchestrator → Validator → Builder)
+  - Separate Validation Chain: LLM-Output → SceneSpecValidator → AssetResolver → SceneBuilder
+  - Two-Stage Pipeline mit echtem LLM (Plan → Spec → Validate → Build)
+- Alle Tests skippen sauber in CI (kein Ollama, kein API Key) als Pending
+- 10 neue Tests (3 Ollama + 3 OpenAI + 4 E2E)
+
+### File-Inventar (33 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -188,6 +212,7 @@ addons/ai_scene_gen/
     test_golden.gd                     # 10 Tests (Golden structure/position/material + Snapshot determinism)
     test_benchmark.gd                  # 13 Tests (Build-time benchmarks, linearity, memory profiling, cleanup)
     test_dock.gd                       # 21 Tests (Request shape, flags, tags, states)
+    test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
     USER_GUIDE.md                      # Full UI walkthrough, prompt tips, features
@@ -308,8 +333,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 10 | Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) | — (no code changes) |
 | 11 | Golden/Snapshot Tests (determinism verification via frozen SceneSpec) | 10 (Golden + Snapshot) |
 | 12 | Performance Profiling (build-time benchmarks, memory tracking, cleanup) | 13 (Benchmark + Memory) |
+| 13 | Real LLM Integration Tests (Ollama + OpenAI E2E, skip-guard) | 10 (Integration, pending in CI) |
 
-**Aktuell: 184 Tests, 553 Asserts, 12 Test-Files, 1.3s, alle PASS.**
+**Aktuell: 194 Tests, 553 Asserts, 13 Test-Files, 6.1s, 184 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -368,37 +394,42 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 12. ~~Documentation~~ ✅ ERLEDIGT (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ)
 13. ~~Golden/Snapshot Tests~~ ✅ ERLEDIGT (determinism verification via frozen SceneSpec JSON)
 14. ~~Performance Profiling~~ ✅ ERLEDIGT (build-time benchmarks, memory tracking, cleanup verification)
-15. **Real LLM Integration Tests** (end-to-end mit echtem Ollama/OpenAI)
+15. ~~Real LLM Integration Tests~~ ✅ ERLEDIGT (E2E mit echtem Ollama/OpenAI, skip-guard fuer CI)
+16. **UI Polish + UX Improvements** (Progress animations, better error display, keyboard shortcuts)
 
 ---
 
-## Agenten-Prompt: Prio 13 — Real LLM Integration Tests
+## Agenten-Prompt: Prio 14 — UI Polish + UX Improvements
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-12 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-13 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
-Documentation, Golden/Snapshot Tests, Performance Profiling).
-184 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 13 — Real LLM Integration Tests.
+Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests).
+194 GUT Tests (13 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 14 — UI Polish + UX Improvements.
 
-ZIEL: End-to-end Tests mit echtem Ollama/OpenAI Provider.
+ZIEL: Dock UI aufpolieren und UX verbessern.
 
-SCHRITT 1: Integration Test Infrastructure
-    - test_integration.gd in addons/ai_scene_gen/tests/
-    - Optionale Tests die nur laufen wenn ein LLM-Endpunkt erreichbar ist
-    - Skip-Guard: wenn kein Ollama/OpenAI verfuegbar, Tests ueberspringen
-    - Teste echten Send/Receive Cycle mit kleinem Prompt
+SCHRITT 1: Progress Animation
+    - Animierte Fortschrittsanzeige waehrend Pipeline laeuft
+    - Stage-Labels (Generating... Validating... Building...)
+    - Elapsed-Time Anzeige
 
-SCHRITT 2: End-to-End Pipeline
-    - Voller Pipeline-Durchlauf mit echtem LLM-Response
-    - Validiere dass LLM-Output durch Validator + Builder laeuft
-    - Teste Schema-Retry mit echtem LLM
+SCHRITT 2: Error Display
+    - Bessere Fehleranzeige mit Error-Code und Fix-Hints
+    - Collapsible Error-Details
+    - Copy-to-Clipboard fuer Fehlermeldungen
 
-3b. Lokal testen: Alle 184+ Tests muessen PASS sein (plus neue)
+SCHRITT 3: Keyboard Shortcuts
+    - Ctrl+G: Generate
+    - Ctrl+Shift+A: Apply Preview
+    - Escape: Cancel/Discard
+
+3b. Lokal testen: Alle 194+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
