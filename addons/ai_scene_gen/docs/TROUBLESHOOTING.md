@@ -86,6 +86,30 @@
 | PRIM_ERR_UNKNOWN_SHAPE | Unknown primitive shape type | Use box, sphere, cylinder, capsule, or plane |
 | PRIM_ERR_INVALID_SIZE | Primitive size invalid | Use positive, non-zero dimensions |
 
+## Automatic Spec Patching
+
+The orchestrator automatically patches system-managed fields **before** validation.
+This means errors like the following are fixed automatically and should NOT occur:
+
+| Field | Patched Value | Why |
+|-------|--------------|-----|
+| `spec_version` | `"1.0.0"` | LLMs sometimes forget or use wrong version |
+| `meta.generator` | `"ai_scene_gen"` | Must be exact string |
+| `meta.prompt_hash` | SHA-256 of user prompt | LLMs cannot compute hashes |
+| `meta.style_preset` | From UI setting | LLMs may invent presets |
+| `meta.bounds_meters` | From UI setting | LLMs may change bounds |
+| `meta.timestamp_utc` | Current UTC time | LLMs cannot know current time |
+| `determinism.seed` | From UI setting | Must match request seed |
+| `determinism.variation_mode` | From UI setting (bool) | LLMs often return string "false" |
+| `determinism.fingerprint` | SHA-256 of all inputs | LLMs cannot compute hashes |
+| `environment.sky_type` | Defaults to `"procedural"` if invalid | LLMs invent types like "clear" |
+| Top-level `generator` | Removed (belongs in `meta`) | Common LLM mistake |
+| Top-level `style_preset` | Removed (belongs in `meta`) | Common LLM mistake |
+| Top-level `timestamp_utc` | Removed (belongs in `meta`) | Common LLM mistake |
+
+If you still see `SPEC_ERR_TYPE` or `SPEC_ERR_ADDITIONAL_FIELD` errors for these fields,
+it likely means the patching code has a bug — please report it.
+
 ## Common Problems
 
 ### "Generation hangs / takes forever"

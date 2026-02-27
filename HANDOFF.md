@@ -287,6 +287,7 @@ addons/ai_scene_gen/
 AiSceneGenDock.generate_requested  -> plugin._on_generate_requested  -> await orchestrator.start_generation()
 AiSceneGenDock.apply_requested     -> plugin._on_apply_requested     -> orchestrator.apply_preview(get_undo_redo(), root)
 AiSceneGenDock.discard_requested   -> plugin._on_discard_requested   -> orchestrator.discard_preview()
+AiSceneGenDock.cancel_requested    -> plugin._on_cancel_requested    -> orchestrator.cancel_generation()
 AiSceneGenDock.provider_changed    -> plugin._on_provider_changed    -> orchestrator.set_llm_provider() + await fetch_models
 AiSceneGenDock.import_requested    -> plugin._on_import_requested    -> EditorFileDialog -> persistence.import_spec -> orchestrator.rebuild_from_spec
 AiSceneGenDock.export_requested    -> plugin._on_export_requested    -> EditorFileDialog -> persistence.export_spec
@@ -312,11 +313,19 @@ Two-Stage (>30 Woerter oder CheckBox):
   1d. await LLMProvider.send_request(spec_prompt, ...) -> LLMResponse (mit Retries)
 
 Shared (ab Validation):
+  2b. _strip_markdown_fences(raw_json) -> raw_json (entfernt ```json ... ```)
+  2c. _patch_spec_fields(raw_json, request) -> raw_json (injiziert system-fields)
+      - spec_version = "1.0.0"
+      - meta: generator, style_preset, bounds_meters, prompt_hash (SHA-256), timestamp_utc
+      - determinism: seed, variation_mode, fingerprint (SHA-256)
+      - environment.sky_type: fallback "procedural" wenn ungueltig
+      - Entfernt fehlplatzierte top-level Felder (generator, style_preset, timestamp_utc)
   3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
      Schema-Retry (bis zu MAX_SCHEMA_RETRIES=2 bei Validation-Fehler):
        3a. PromptCompiler.compile_retry_stage(request, raw_json, errors) -> retry_prompt
        3b. await LLMProvider.send_request(retry_prompt, ...) -> LLMResponse
-       3c. SceneSpecValidator.validate_json_string(new_raw_json) -> ValidationResult
+       3c. _patch_spec_fields(new_raw_json, request) -> patched (auch retry-output patchen)
+       3d. SceneSpecValidator.validate_json_string(patched) -> ValidationResult
        (Cancellation-Guard nach jedem await)
   4. AssetResolver.resolve_nodes(spec, registry) -> ResolvedSpec
   5. SceneBuilder.build(resolved_spec, preview_root) -> BuildResult
@@ -340,9 +349,16 @@ Shared (ab Validation):
 5. ~~**Kein Health-Check im UI**~~ ✅ BEHOBEN (Prio 9) — "Test Connection"
    Button im Dock, zeigt Ergebnis ("Connected — X models" / "Failed").
 
+6. ~~**LLM kann system-fields nicht korrekt generieren**~~ ✅ BEHOBEN —
+   `_patch_spec_fields()` im Orchestrator injiziert `prompt_hash` (SHA-256),
+   `determinism` (seed, variation_mode, fingerprint), `meta` (generator,
+   style_preset, bounds_meters, timestamp_utc), und defaultet ungueltige
+   `sky_type` auf "procedural". Fehlplatzierte Top-Level-Felder
+   (generator, style_preset, timestamp_utc) werden entfernt.
+
 Bereits gefixt: Two-Stage Mode (Prio 4), Schema-Retry (Prio 8),
 Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
-4 Provider statt 2 (Prio 7).
+4 Provider statt 2 (Prio 7), Spec-Patching (Prio 14 Bugfix).
 
 ## Erledigte Features (Prio 1-9, alle ✅)
 

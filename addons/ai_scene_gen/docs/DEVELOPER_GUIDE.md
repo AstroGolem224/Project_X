@@ -56,11 +56,16 @@ orchestrator.pipeline_failed        → dock.show_errors()
 1. `PromptCompiler.compile_single_stage(request)` → compiled_prompt
 2. `await LLMProvider.send_request(prompt, model, 0.0, seed)` → LLMResponse  
    (up to 2 retries on failure, `correlation_id` guard after each `await`)
+2b. `_strip_markdown_fences(raw_json)` — remove \`\`\`json fences  
+2c. `_patch_spec_fields(raw_json, request)` — inject system-managed fields  
+   (prompt_hash, seed, variation_mode, fingerprint, timestamps, sky_type default;
+   remove misplaced top-level fields like `generator`)
 3. `SceneSpecValidator.validate_json_string(raw_json)` → ValidationResult  
    **Schema-Retry** (up to `MAX_SCHEMA_RETRIES=2`):
    - a. `PromptCompiler.compile_retry_stage(request, raw_json, errors)`
    - b. `await LLMProvider.send_request(retry_prompt, ...)` → LLMResponse
-   - c. Validate again
+   - c. `_patch_spec_fields(new_raw_json, request)` — patch retry output too
+   - d. Validate again
 4. `AssetResolver.resolve_nodes(spec, registry)` → ResolvedSpec
 5. `SceneBuilder.build(resolved_spec, preview_root)` → BuildResult
 6. `PostProcessor.execute_all(root, spec)` → warnings

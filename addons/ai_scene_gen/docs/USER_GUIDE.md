@@ -170,4 +170,12 @@ Each entry can include a **Fix:** hint with suggested actions.
 
 ## Keyboard Shortcuts
 
-- **Ctrl+Z** — Undo an applied preview (full undo/redo support via EditorUndoRedoManager).
+| Shortcut | Action | Available when |
+|----------|--------|----------------|
+| **Ctrl+G** | Generate Scene | Idle or Error state |
+| **Ctrl+Shift+A** | Apply Preview | Preview Ready |
+| **Escape** | Cancel generation / Discard preview | Generating or Preview Ready |
+| **Ctrl+Z** | Undo an applied preview | After Apply (standard Godot undo) |
+
+During generation, the **Generate** button changes to **Cancel (Esc)**.
+Clicking it or pressing Escape cancels the in-flight LLM request.
