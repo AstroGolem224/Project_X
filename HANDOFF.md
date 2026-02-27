@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS (Phase 1-6 + Prio 1-11)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS (Phase 1-6 + Prio 1-12)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -28,7 +28,8 @@ Schema-Retry mit Error-Feedback an LLM ist implementiert und getestet.
 Health-Check UI + Model Cache Persistence sind implementiert und getestet.
 Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) ist komplett.
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
-171 GUT Tests (11 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
+184 GUT Tests (12 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -115,7 +116,29 @@ Provider-Dropdown Verdrahtung
   - Voller Tree-Structure-Vergleich (normalisierte Auto-Namen)
 - 10 neue Tests (6 Golden + 4 Snapshot)
 
-### File-Inventar (31 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 12: Performance Profiling (✅ ERLEDIGT)**
+
+- Benchmark Infrastructure (`test_benchmark.gd`):
+  - Programmatischer SceneSpec-Generator fuer beliebige Node-Counts (flat + nested)
+  - Microsecond-genaue Zeitmessung mit Median ueber 3 Iterationen
+  - 3 Tier-Thresholds: Small (10 nodes < 50ms), Medium (100 nodes < 500ms), Large (500 nodes < 2500ms)
+  - Linearity-Verifikation: 200/10 Ratio muss unter 3x linearer Erwartung bleiben
+  - Nested-Spec Performance (10 branches x depth 4)
+  - BuildResult.duration_ms Konsistenz-Check
+- Memory Profiling:
+  - Node-Count Verifikation: BuildResult.get_node_count() == Spec-Node-Count
+  - Large Spec (500 nodes) Node-Count Verifikation
+  - Cleanup nach PreviewLayer.discard() (preview inactive, count = 0)
+  - Cleanup nach PreviewLayer.apply_to_scene() (nodes reparented, preview inactive)
+  - Repeated Build/Discard Leak-Check (5 Iterationen, State bleibt clean)
+  - Triangle-Count positiv fuer Primitive-Nodes
+  - Hash-Determinismus ueber identische Specs
+- Gemessene Performance (Godot 4.6.1, Windows):
+  - 10 nodes: ~0.8ms, 100 nodes: ~8.2ms, 500 nodes: ~40.6ms
+  - Build-Time skaliert linear mit Node-Count
+- 13 neue Tests (6 Benchmark + 7 Memory)
+
+### File-Inventar (32 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -163,7 +186,8 @@ addons/ai_scene_gen/
     test_anthropic_provider.gd         # 19 Tests (Config, error guards, cancel, models, token extraction)
     test_orchestrator.gd               # 15 Tests (Pipeline, cancel, two-stage, correlation, schema-retry)
     test_golden.gd                     # 10 Tests (Golden structure/position/material + Snapshot determinism)
-    test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
+    test_benchmark.gd                  # 13 Tests (Build-time benchmarks, linearity, memory profiling, cleanup)
+    test_dock.gd                       # 21 Tests (Request shape, flags, tags, states)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
     USER_GUIDE.md                      # Full UI walkthrough, prompt tips, features
@@ -283,8 +307,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 9 | Health-Check UI + Model Cache Persistence | 7 (Dock) |
 | 10 | Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) | — (no code changes) |
 | 11 | Golden/Snapshot Tests (determinism verification via frozen SceneSpec) | 10 (Golden + Snapshot) |
+| 12 | Performance Profiling (build-time benchmarks, memory tracking, cleanup) | 13 (Benchmark + Memory) |
 
-**Aktuell: 171 Tests, 504 Asserts, 11 Test-Files, 0.83s, alle PASS.**
+**Aktuell: 184 Tests, 553 Asserts, 12 Test-Files, 1.3s, alle PASS.**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -342,37 +367,38 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 11. ~~Model-Cache Persistence~~ ✅ ERLEDIGT
 12. ~~Documentation~~ ✅ ERLEDIGT (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ)
 13. ~~Golden/Snapshot Tests~~ ✅ ERLEDIGT (determinism verification via frozen SceneSpec JSON)
-14. **Performance Profiling** (build time benchmarks, memory tracking)
+14. ~~Performance Profiling~~ ✅ ERLEDIGT (build-time benchmarks, memory tracking, cleanup verification)
 15. **Real LLM Integration Tests** (end-to-end mit echtem Ollama/OpenAI)
 
 ---
 
-## Agenten-Prompt: Prio 12 — Performance Profiling
+## Agenten-Prompt: Prio 13 — Real LLM Integration Tests
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-11 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-12 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
-Documentation, Golden/Snapshot Tests). 171 GUT Tests laufen alle PASS.
-GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 12 — Performance Profiling.
+Documentation, Golden/Snapshot Tests, Performance Profiling).
+184 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 13 — Real LLM Integration Tests.
 
-ZIEL: Build-time benchmarks und Memory-Tracking fuer grosse Specs.
+ZIEL: End-to-end Tests mit echtem Ollama/OpenAI Provider.
 
-SCHRITT 1: Benchmark Infrastructure
-    - test_benchmark.gd in addons/ai_scene_gen/tests/
-    - Messe build() Laufzeit fuer verschiedene Spec-Groessen
-    - Verifiziere dass build-time linear mit Node-Count skaliert
-    - Setze Schwellenwerte fuer akzeptable Performance
+SCHRITT 1: Integration Test Infrastructure
+    - test_integration.gd in addons/ai_scene_gen/tests/
+    - Optionale Tests die nur laufen wenn ein LLM-Endpunkt erreichbar ist
+    - Skip-Guard: wenn kein Ollama/OpenAI verfuegbar, Tests ueberspringen
+    - Teste echten Send/Receive Cycle mit kleinem Prompt
 
-SCHRITT 2: Memory Profiling
-    - Tracke Node-Allokationen waehrend build()
-    - Verifiziere ordentliches Cleanup nach discard/apply
+SCHRITT 2: End-to-End Pipeline
+    - Voller Pipeline-Durchlauf mit echtem LLM-Response
+    - Validiere dass LLM-Output durch Validator + Builder laeuft
+    - Teste Schema-Retry mit echtem LLM
 
-3b. Lokal testen: Alle 171+ Tests muessen PASS sein (plus neue)
+3b. Lokal testen: Alle 184+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
