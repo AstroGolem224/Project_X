@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION (Phase 1-6 + Prio 1-10)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS (Phase 1-6 + Prio 1-11)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -27,7 +27,8 @@ OpenAI + Anthropic Provider sind implementiert, integriert, und getestet.
 Schema-Retry mit Error-Feedback an LLM ist implementiert und getestet.
 Health-Check UI + Model Cache Persistence sind implementiert und getestet.
 Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) ist komplett.
-161 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
+171 GUT Tests (11 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -101,7 +102,20 @@ Provider-Dropdown Verdrahtung
 - plugin.gd: Connection-Test aktualisiert Cache bei Erfolg
 - 7 neue Tests in test_dock.gd (Signal, Label, Visibility, Disabled-State)
 
-### File-Inventar (30 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 11: Golden/Snapshot Tests (✅ ERLEDIGT)**
+
+- Golden Test Infrastructure (`test_golden.gd`):
+  - Laedt frozen `.scenespec.json` Dateien, baut Szene via AssetResolver + SceneBuilder
+  - Vergleicht Node-Count, Node-Namen, Positionen (approx), Typen, Materialien
+  - 2 Golden Specs: `outdoor_clearing` (9 Nodes, 1176 Tris) + `interior_room` (8 Nodes, 48 Tris)
+- Snapshot-Vergleich:
+  - `build(spec, root)` zweimal mit gleichem Seed → identischer Hash
+  - Node-Count, Triangle-Count, Build-Hash alle identisch
+  - Verschiedene Specs erzeugen verschiedene Hashes
+  - Voller Tree-Structure-Vergleich (normalisierte Auto-Namen)
+- 10 neue Tests (6 Golden + 4 Snapshot)
+
+### File-Inventar (31 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -148,6 +162,7 @@ addons/ai_scene_gen/
     test_openai_provider.gd            # 19 Tests (Config, error guards, cancel, models, token extraction)
     test_anthropic_provider.gd         # 19 Tests (Config, error guards, cancel, models, token extraction)
     test_orchestrator.gd               # 15 Tests (Pipeline, cancel, two-stage, correlation, schema-retry)
+    test_golden.gd                     # 10 Tests (Golden structure/position/material + Snapshot determinism)
     test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -267,8 +282,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 8 | Schema-Retry mit Error-Feedback | 3 (Orchestrator) + 4 (Compiler) |
 | 9 | Health-Check UI + Model Cache Persistence | 7 (Dock) |
 | 10 | Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) | — (no code changes) |
+| 11 | Golden/Snapshot Tests (determinism verification via frozen SceneSpec) | 10 (Golden + Snapshot) |
 
-**Aktuell: 161 Tests, 405 Asserts, 10 Test-Files, 0.74s, alle PASS.**
+**Aktuell: 171 Tests, 504 Asserts, 11 Test-Files, 0.83s, alle PASS.**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -325,35 +341,38 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 10. ~~Health-Check UI~~ ✅ ERLEDIGT
 11. ~~Model-Cache Persistence~~ ✅ ERLEDIGT
 12. ~~Documentation~~ ✅ ERLEDIGT (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ)
-13. **Golden/Snapshot Tests** (determinism verification via frozen SceneSpec JSON)
+13. ~~Golden/Snapshot Tests~~ ✅ ERLEDIGT (determinism verification via frozen SceneSpec JSON)
+14. **Performance Profiling** (build time benchmarks, memory tracking)
+15. **Real LLM Integration Tests** (end-to-end mit echtem Ollama/OpenAI)
 
 ---
 
-## Agenten-Prompt: Prio 11 — Golden/Snapshot Tests
+## Agenten-Prompt: Prio 12 — Performance Profiling
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-10 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-11 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
-Documentation). 161 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 11 — Golden/Snapshot Tests.
+Documentation, Golden/Snapshot Tests). 171 GUT Tests laufen alle PASS.
+GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 12 — Performance Profiling.
 
-ZIEL: Determinism verification via frozen SceneSpec JSON.
+ZIEL: Build-time benchmarks und Memory-Tracking fuer grosse Specs.
 
-SCHRITT 1: Golden Test Infrastructure
-    - test_golden.gd in addons/ai_scene_gen/tests/
-    - Lade eine .scenespec.json, baue die Szene, vergleiche Node-Tree gegen erwartete Werte
-    - Vergleiche: Node-Count, Node-Namen, Positionen (approx), Typen, Materialien
-    - Mindestens 2 Golden Specs: outdoor_clearing + interior_room
+SCHRITT 1: Benchmark Infrastructure
+    - test_benchmark.gd in addons/ai_scene_gen/tests/
+    - Messe build() Laufzeit fuer verschiedene Spec-Groessen
+    - Verifiziere dass build-time linear mit Node-Count skaliert
+    - Setze Schwellenwerte fuer akzeptable Performance
 
-SCHRITT 2: Snapshot-Vergleich
-    - build(spec, root) zweimal mit gleichem Seed -> identisches Ergebnis
-    - Hash-Vergleich der build_result Werte
+SCHRITT 2: Memory Profiling
+    - Tracke Node-Allokationen waehrend build()
+    - Verifiziere ordentliches Cleanup nach discard/apply
 
-3b. Lokal testen: Alle 161+ Tests muessen PASS sein (plus neue)
+3b. Lokal testen: Alle 171+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
