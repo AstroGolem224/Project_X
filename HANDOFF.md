@@ -240,7 +240,7 @@ addons/ai_scene_gen/
     mock_provider.gd                   # C: Canned-Response Provider (synchron)
     ollama_provider.gd                 # C: Async Ollama Provider (localhost:11434)
     openai_provider.gd                 # C: Async OpenAI Provider (Chat Completions, JSON mode)
-    anthropic_provider.gd              # C: Async Anthropic Provider (Messages API)
+    anthropic_provider.gd              # C: Async Anthropic Provider (Messages API, /v1/models fetch, 16K max_tokens)
   assets/
     asset_tag_registry.gd              # F: Tag-Registry (extends Resource, @export)
     asset_resolver.gd                  # F: Tag-Aufloesung mit Fallback
@@ -356,6 +356,7 @@ Shared (ab Validation):
       - meta: generator, style_preset, bounds_meters, prompt_hash (SHA-256), timestamp_utc
       - determinism: seed, variation_mode, fingerprint (SHA-256)
       - environment.sky_type: fallback "procedural" wenn ungueltig
+      - lights[].type: Auto-Korrektur (PointLight3D→OmniLight3D, DirectionalLight→DirectionalLight3D, etc.)
       - Entfernt fehlplatzierte top-level Felder (generator, style_preset, timestamp_utc)
   3. SceneSpecValidator.validate_json_string(raw_json) -> ValidationResult
      Schema-Retry (bis zu MAX_SCHEMA_RETRIES=2 bei Validation-Fehler):
@@ -392,10 +393,22 @@ Shared (ab Validation):
    style_preset, bounds_meters, timestamp_utc), und defaultet ungueltige
    `sky_type` auf "procedural". Fehlplatzierte Top-Level-Felder
    (generator, style_preset, timestamp_utc) werden entfernt.
+7. ~~**Anthropic nur 1 Modell im Dropdown**~~ ✅ BEHOBEN — `DEFAULT_MODELS`
+   auf 3 erweitert (Sonnet 4, Opus 4, Haiku 3.5). `fetch_available_models()`
+   nutzt jetzt den `/v1/models` Endpoint (wie OpenAI), Fallback auf Defaults.
+8. ~~**Anthropic MAX_TOKENS zu niedrig**~~ ✅ BEHOBEN — Von 4096 auf 16384
+   erhoeht. 4096 reichte nicht fuer vollstaendige SceneSpec JSONs, fuehrte
+   zu truncated output ("Unterminated string" Fehler nach jedem Retry).
+9. ~~**LLM generiert ungueltige Light-Types**~~ ✅ BEHOBEN —
+   `_fix_light_type()` im Orchestrator mappt gaengige LLM-Fehler
+   (PointLight3D→OmniLight3D, DirectionalLight→DirectionalLight3D, etc.)
+   automatisch auf gueltige Godot-Types. Unbekannte Types fallen auf
+   DirectionalLight3D zurueck. Patching vor Validation.
 
 Bereits gefixt: Two-Stage Mode (Prio 4), Schema-Retry (Prio 8),
 Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
-4 Provider statt 2 (Prio 7), Spec-Patching (Prio 14 Bugfix).
+4 Provider statt 2 (Prio 7), Spec-Patching (Prio 14 Bugfix),
+Anthropic Models + MAX_TOKENS + Light-Type Auto-Patch (Post-Prio-15 Bugfixes).
 
 ## Erledigte Features (Prio 1-9, alle ✅)
 
