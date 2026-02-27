@@ -588,6 +588,14 @@ func _patch_spec_fields(raw_json: String, request: Dictionary) -> String:
 			if sky not in ["procedural", "color", "hdri"]:
 				env["sky_type"] = "procedural"
 
+	if spec.has("lights") and spec["lights"] is Array:
+		var lights: Array = spec["lights"] as Array
+		for i: int in range(lights.size()):
+			if lights[i] is Dictionary:
+				var ld: Dictionary = lights[i] as Dictionary
+				if ld.has("type"):
+					ld["type"] = _fix_light_type(str(ld["type"]))
+
 	_log("debug", "spec fields patched (prompt_hash, determinism, meta)")
 	return JSON.stringify(spec)
 
@@ -599,6 +607,26 @@ func _compute_prompt_hash(prompt: String) -> String:
 	ctx.update(data)
 	var hash_bytes: PackedByteArray = ctx.finish()
 	return "sha256:" + hash_bytes.hex_encode()
+
+
+## Maps common LLM light type mistakes to valid Godot light types.
+func _fix_light_type(raw: String) -> String:
+	var lower: String = raw.to_lower().strip_edges()
+	if lower in ["pointlight3d", "pointlight", "point_light", "omnilight", "omni_light"]:
+		return "OmniLight3D"
+	if lower in ["directionallight", "directional_light", "dirlight3d", "sunlight", "sun_light"]:
+		return "DirectionalLight3D"
+	if lower in ["spotlight", "spot_light"]:
+		return "SpotLight3D"
+	if raw in ["DirectionalLight3D", "OmniLight3D", "SpotLight3D"]:
+		return raw
+	if lower == "directionallight3d":
+		return "DirectionalLight3D"
+	if lower == "omnilight3d":
+		return "OmniLight3D"
+	if lower == "spotlight3d":
+		return "SpotLight3D"
+	return "DirectionalLight3D"
 
 
 func _strip_markdown_fences(text: String) -> String:
