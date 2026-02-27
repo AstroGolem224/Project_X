@@ -42,6 +42,7 @@ This EditorPlugin lets you type a natural-language prompt and generates a 3D sce
 
 Select the provider from the dropdown. Models are fetched automatically.
 Use "Test Connection" to verify connectivity and refresh the model list.
+To use a model not in the dropdown, type its name in the **Custom** field (e.g. `qwen3.5:27b`).
 
 ### Remote Ollama (e.g. another machine on your LAN)
 

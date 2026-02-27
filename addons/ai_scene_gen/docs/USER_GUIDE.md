@@ -23,6 +23,7 @@ A multiline **TextEdit** field for your prompt. Placeholder text: *"Describe you
 - **Provider** — Dropdown with: MockProvider, Ollama, OpenAI, Anthropic. A **"Test Connection"** button appears next to it for non-Mock providers.
 - **Connection result label** — Shown below the Provider row: "Connected — X models" (green) or "Failed: could not reach provider" (red).
 - **Model** — Dropdown populated with models from the selected provider.
+- **Custom** — Free-text field below the Model dropdown. If filled, this overrides the dropdown selection. Use this for any model not in the dropdown list (e.g. `qwen3.5:27b`).
 - **Host** — URL field visible only when Ollama is selected. Default: *http://localhost:11434*.
 - **API Key** — Secret field visible only for OpenAI and Anthropic.
 - **Style** — Dropdown: blockout, stylized, realistic-lite.

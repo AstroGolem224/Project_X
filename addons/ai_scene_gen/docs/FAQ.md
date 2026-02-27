@@ -9,7 +9,7 @@ No. The AI produces JSON data only (SceneSpec format). The plugin parses it with
 Yes, with the MockProvider (ships with the plugin). MockProvider returns pre-made JSON responses — no network needed. Ollama also works offline if running locally. Cloud providers (OpenAI, Anthropic) require internet.
 
 ### Can I use my own models?
-Yes. Use the Ollama provider for any locally-hosted model (Llama, Mistral, CodeLlama, etc.). For cloud models, use OpenAI (GPT-4o family) or Anthropic (Claude family). You can also implement a custom provider by extending LLMProvider.
+Yes. Use the Ollama provider for any locally-hosted model (Llama, Mistral, CodeLlama, Qwen, DeepSeek, etc.). If your model doesn't appear in the dropdown, type its name in the **Custom** field (e.g. `qwen3.5:27b`). For cloud models, use OpenAI (GPT-4o family) or Anthropic (Claude family). You can also implement a custom provider by extending LLMProvider.
 
 ### What if the LLM returns garbage?
 The SceneSpecValidator catches invalid JSON and schema violations. If validation fails, the pipeline automatically retries up to 2 times, sending the validation errors back to the LLM for correction (Schema-Retry). If all retries fail, errors are displayed in the dock.

@@ -34,6 +34,7 @@ This guide covers provider setup, API key management, network requirements, perf
 - Configurable **Host URL** field in the dock (stored per-provider in EditorSettings).
 - `needs_api_key()` = `false`, `needs_base_url()` = `true`
 - Models are auto-fetched from the `/api/tags` endpoint.
+- Any model can also be entered manually via the **Custom** field in the dock (e.g. `qwen3.5:27b`, `deepseek-r1:32b`).
 - For remote Ollama: set `OLLAMA_HOST=0.0.0.0` on the server, then enter `http://IP:11434` in the Host field.
 
 ### OpenAI

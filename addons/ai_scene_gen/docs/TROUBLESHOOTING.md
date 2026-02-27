@@ -108,6 +108,7 @@
 - Click "Test Connection" to refresh models
 - Check API key and network connectivity
 - Model cache expires after 1 hour — switch provider to refresh
+- **Alternative**: Type your model name directly in the **Custom** field below the dropdown (e.g. `qwen3.5:27b`) — this overrides the dropdown entirely
 
 ### "Preview nodes remain after discard"
 - Click "Discard" button

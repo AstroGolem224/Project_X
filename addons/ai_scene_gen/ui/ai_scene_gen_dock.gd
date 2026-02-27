@@ -30,6 +30,7 @@ const MAX_SEED: int = 2147483647
 var _prompt_edit: TextEdit
 var _provider_dropdown: OptionButton
 var _model_dropdown: OptionButton
+var _custom_model_edit: LineEdit
 var _style_dropdown: OptionButton
 var _seed_spinbox: SpinBox
 var _seed_random_button: Button
@@ -204,8 +205,8 @@ func get_generation_request() -> Dictionary:
 	if _provider_dropdown.selected >= 0:
 		provider_text = _provider_dropdown.get_item_text(_provider_dropdown.selected)
 
-	var model_text: String = ""
-	if _model_dropdown.selected >= 0:
+	var model_text: String = _custom_model_edit.text.strip_edges()
+	if model_text.is_empty() and _model_dropdown.selected >= 0:
 		model_text = _model_dropdown.get_item_text(_model_dropdown.selected)
 
 	var style_text: String = "blockout"
@@ -459,6 +460,14 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	parent.add_child(_connection_result_label)
 
 	_model_dropdown = _add_labeled_option(parent, "Model:")
+
+	var custom_model_row: HBoxContainer = HBoxContainer.new()
+	custom_model_row.add_child(_make_label("Custom:"))
+	_custom_model_edit = LineEdit.new()
+	_custom_model_edit.placeholder_text = "e.g. qwen3.5:27b (overrides dropdown)"
+	_custom_model_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	custom_model_row.add_child(_custom_model_edit)
+	parent.add_child(custom_model_row)
 
 	_host_url_row = HBoxContainer.new()
 	_host_url_row.add_child(_make_label("Host:"))
