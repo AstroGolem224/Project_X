@@ -217,6 +217,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 	_change_state(PipelineState.VALIDATING)
 
 	raw_json = _strip_markdown_fences(raw_json)
+	raw_json = _patch_spec_fields(raw_json, request)
 	var validation: RefCounted = _validator.validate_json_string(raw_json)
 	var schema_retries: int = 0
 
@@ -245,6 +246,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 			break
 
 		raw_json = _strip_markdown_fences(retry_response.get_raw_body())
+		raw_json = _patch_spec_fields(raw_json, request)
 		validation = _validator.validate_json_string(raw_json)
 
 	if not validation.is_valid():
@@ -540,6 +542,55 @@ func _tag_errors_with_correlation(errors: Array[Dictionary]) -> void:
 # ---------------------------------------------------------------------------
 # Private – Utility
 # ---------------------------------------------------------------------------
+
+## Injects system-known fields (hashes, seeds, timestamps) that the LLM cannot
+## generate correctly. Runs BEFORE validation so the validator sees clean data.
+func _patch_spec_fields(raw_json: String, request: Dictionary) -> String:
+	var parsed: Variant = JSON.parse_string(raw_json)
+	if parsed == null or not parsed is Dictionary:
+		return raw_json
+
+	var spec: Dictionary = parsed as Dictionary
+
+	spec["spec_version"] = "1.0.0"
+
+	if not spec.has("meta") or not spec["meta"] is Dictionary:
+		spec["meta"] = {}
+	var meta: Dictionary = spec["meta"]
+	meta["generator"] = "ai_scene_gen"
+	meta["style_preset"] = request.get("style_preset", "blockout")
+	meta["bounds_meters"] = request.get("bounds_meters", [10.0, 5.0, 10.0])
+	meta["prompt_hash"] = _compute_prompt_hash(
+		(request.get("user_prompt", "") as String).strip_edges()
+	)
+	meta["timestamp_utc"] = Time.get_datetime_string_from_system(true)
+
+	if not spec.has("determinism") or not spec["determinism"] is Dictionary:
+		spec["determinism"] = {}
+	var det: Dictionary = spec["determinism"]
+	det["seed"] = request.get("seed", 42)
+	det["variation_mode"] = request.get("variation", false) as bool
+	det["fingerprint"] = _prompt_compiler.build_determinism_fingerprint(request)
+
+	if spec.has("environment") and spec["environment"] is Dictionary:
+		var env: Dictionary = spec["environment"]
+		if env.has("sky_type"):
+			var sky: String = str(env["sky_type"]).to_lower().strip_edges()
+			if sky not in ["procedural", "color", "hdri"]:
+				env["sky_type"] = "procedural"
+
+	_log("debug", "spec fields patched (prompt_hash, determinism, meta)")
+	return JSON.stringify(spec)
+
+
+func _compute_prompt_hash(prompt: String) -> String:
+	var data: PackedByteArray = prompt.to_utf8_buffer()
+	var ctx: HashingContext = HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(data)
+	var hash_bytes: PackedByteArray = ctx.finish()
+	return "sha256:" + hash_bytes.hex_encode()
+
 
 func _strip_markdown_fences(text: String) -> String:
 	var stripped: String = text.strip_edges()
