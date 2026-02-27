@@ -9,6 +9,7 @@ signal discard_requested()
 signal import_requested(path: String)
 signal export_requested(path: String)
 signal provider_changed(provider_name: String)
+signal connection_test_requested(provider_name: String)
 
 # --- Enums / Constants ---
 
@@ -54,6 +55,8 @@ var _asset_tag_section: VBoxContainer
 var _asset_tag_container: VBoxContainer
 var _asset_tag_checks: Array[CheckBox] = []
 var _asset_tag_empty_label: Label
+var _test_connection_button: Button
+var _connection_result_label: Label
 var _state: int = DockState.IDLE
 
 
@@ -81,6 +84,7 @@ func _ready() -> void:
 	_export_button.pressed.connect(_on_export_pressed)
 	_seed_random_button.pressed.connect(_on_random_seed_pressed)
 	_provider_dropdown.item_selected.connect(_on_provider_selected)
+	_test_connection_button.pressed.connect(_on_test_connection_pressed)
 
 	set_state(DockState.IDLE)
 
@@ -182,6 +186,7 @@ func set_provider_list(providers: Array[String]) -> void:
 		_provider_dropdown.add_item(p)
 	if _provider_dropdown.item_count > 0:
 		_provider_dropdown.select(0)
+	_update_connection_test_visibility()
 
 
 ## Populate the model dropdown from an external list.
@@ -262,6 +267,18 @@ func set_api_key(key: String) -> void:
 ## Returns the currently entered API key.
 func get_api_key() -> String:
 	return _api_key_edit.text
+
+
+## Displays the result of a connection test and re-enables the test button.
+func show_connection_result(success: bool, model_count: int) -> void:
+	_test_connection_button.disabled = false
+	_connection_result_label.visible = true
+	if success:
+		_connection_result_label.text = "Connected — %d models" % model_count
+		_connection_result_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3))
+	else:
+		_connection_result_label.text = "Failed: could not reach provider"
+		_connection_result_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 
 
 ## Remove all errors and hide the error panel.
@@ -360,7 +377,19 @@ func _on_random_seed_pressed() -> void:
 
 func _on_provider_selected(index: int) -> void:
 	var provider_name: String = _provider_dropdown.get_item_text(index)
+	_update_connection_test_visibility()
 	provider_changed.emit(provider_name)
+
+
+func _on_test_connection_pressed() -> void:
+	var provider_name: String = ""
+	if _provider_dropdown.selected >= 0:
+		provider_name = _provider_dropdown.get_item_text(_provider_dropdown.selected)
+	_test_connection_button.disabled = true
+	_connection_result_label.text = "Testing…"
+	_connection_result_label.visible = true
+	_connection_result_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	connection_test_requested.emit(provider_name)
 
 
 func _on_import_pressed() -> void:
@@ -369,6 +398,18 @@ func _on_import_pressed() -> void:
 
 func _on_export_pressed() -> void:
 	export_requested.emit("")
+
+
+func _update_connection_test_visibility() -> void:
+	var provider_name: String = ""
+	if _provider_dropdown.selected >= 0:
+		provider_name = _provider_dropdown.get_item_text(_provider_dropdown.selected)
+	var show: bool = provider_name != "MockProvider" and not provider_name.is_empty()
+	_test_connection_button.visible = show
+	if show:
+		_test_connection_button.disabled = false
+	_connection_result_label.visible = false
+	_connection_result_label.text = ""
 
 
 # --- Private: UI builders ---
@@ -401,7 +442,22 @@ func _build_settings_section(parent: VBoxContainer) -> void:
 	parent.add_child(settings_lbl)
 	parent.add_child(HSeparator.new())
 
-	_provider_dropdown = _add_labeled_option(parent, "Provider:")
+	var provider_row: HBoxContainer = HBoxContainer.new()
+	provider_row.add_child(_make_label("Provider:"))
+	_provider_dropdown = OptionButton.new()
+	_provider_dropdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	provider_row.add_child(_provider_dropdown)
+	_test_connection_button = Button.new()
+	_test_connection_button.text = "Test Connection"
+	_test_connection_button.visible = false
+	provider_row.add_child(_test_connection_button)
+	parent.add_child(provider_row)
+
+	_connection_result_label = Label.new()
+	_connection_result_label.text = ""
+	_connection_result_label.visible = false
+	parent.add_child(_connection_result_label)
+
 	_model_dropdown = _add_labeled_option(parent, "Model:")
 
 	_host_url_row = HBoxContainer.new()

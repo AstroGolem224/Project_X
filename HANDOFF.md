@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY (Phase 1-6 + Prio 1-8)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE (Phase 1-6 + Prio 1-9)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -25,7 +25,8 @@ Two-Stage Generation Mode ist implementiert und getestet.
 Variation Mode und Asset Tag Browser sind implementiert und getestet.
 OpenAI + Anthropic Provider sind implementiert, integriert, und getestet.
 Schema-Retry mit Error-Feedback an LLM ist implementiert und getestet.
-154 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Health-Check UI + Model Cache Persistence sind implementiert und getestet.
+161 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -84,6 +85,20 @@ Provider-Dropdown Verdrahtung
 - `get_editor_interface()` deprecated -> `EditorInterface` Singleton (4 Stellen in plugin.gd)
 - `cancel_generation()` emittiert jetzt `ORCH_ERR_CANCELLED` via `pipeline_failed`
 - Typo-Fix: `ORCH_ERR_ST_type_FAILED` -> `ORCH_ERR_STAGE_FAILED`
+
+**Prio 9: Health-Check UI + Model Cache Persistence (✅ ERLEDIGT)**
+
+- Dock: "Test Connection" Button rechts neben Provider-Dropdown
+- Dock: Ergebnis-Label darunter ("Connected — X models" / "Failed: ...")
+- Button + Label nur sichtbar wenn Provider != MockProvider
+- Neues Signal: `connection_test_requested(provider_name: String)`
+- Button disabled waehrend Test laeuft, re-enabled nach Callback
+- `show_connection_result(success: bool, model_count: int)` public Method
+- plugin.gd: Handler nutzt `_provider_switch_id` Pattern gegen Race Conditions
+- plugin.gd: `_on_provider_changed()` laedt Model-Cache VOR async fetch (TTL 1h)
+- plugin.gd: speichert Model-Cache NACH erfolgreichem fetch
+- plugin.gd: Connection-Test aktualisiert Cache bei Erfolg
+- 7 neue Tests in test_dock.gd (Signal, Label, Visibility, Disabled-State)
 
 ### File-Inventar (30 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
@@ -178,6 +193,7 @@ AiSceneGenDock.discard_requested   -> plugin._on_discard_requested   -> orchestr
 AiSceneGenDock.provider_changed    -> plugin._on_provider_changed    -> orchestrator.set_llm_provider() + await fetch_models
 AiSceneGenDock.import_requested    -> plugin._on_import_requested    -> EditorFileDialog -> persistence.import_spec -> orchestrator.rebuild_from_spec
 AiSceneGenDock.export_requested    -> plugin._on_export_requested    -> EditorFileDialog -> persistence.export_spec
+AiSceneGenDock.connection_test_requested -> plugin._on_connection_test_requested -> await fetch_available_models -> dock.show_connection_result
 orchestrator.pipeline_state_changed -> plugin._on_pipeline_state_changed -> dock.set_state()
 orchestrator.pipeline_progress      -> plugin._on_pipeline_progress      -> dock.show_progress()
 orchestrator.pipeline_completed     -> plugin._on_pipeline_completed     -> dock.show_progress(1.0)
@@ -222,18 +238,16 @@ Shared (ab Validation):
 3. **Shared HTTPRequest** — Ein HTTPRequest-Node fuer alle Provider.
    Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
    verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
-4. **Model-Cache nicht genutzt** — `persistence.save_model_cache()` /
-   `load_model_cache()` sind implementiert aber nicht verdrahtet. Models
-   werden bei jedem Provider-Switch frisch per HTTP gefetcht.
-5. **Kein Health-Check im UI** — `health_check()` existiert auf allen
-   Providern, wird aber nicht im Dock exponiert. Kein visuelles Feedback
-   ob der Provider erreichbar ist bevor man generiert.
+4. ~~**Model-Cache nicht genutzt**~~ ✅ BEHOBEN (Prio 9) — Cache wird bei
+   Provider-Switch geladen (TTL 1h) und nach fetch gespeichert.
+5. ~~**Kein Health-Check im UI**~~ ✅ BEHOBEN (Prio 9) — "Test Connection"
+   Button im Dock, zeigt Ergebnis ("Connected — X models" / "Failed").
 
 Bereits gefixt: Two-Stage Mode (Prio 4), Schema-Retry (Prio 8),
 Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 4 Provider statt 2 (Prio 7).
 
-## Erledigte Features (Prio 1-8, alle ✅)
+## Erledigte Features (Prio 1-9, alle ✅)
 
 | Prio | Feature | Tests hinzugefuegt |
 |------|---------|-------------------|
@@ -245,8 +259,9 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 6 | CI/CD (GUT 9.6.0 + GitHub Actions) | 5 Fixes |
 | 7 | OpenAI + Anthropic Provider | 19+19 (Provider) |
 | 8 | Schema-Retry mit Error-Feedback | 3 (Orchestrator) + 4 (Compiler) |
+| 9 | Health-Check UI + Model Cache Persistence | 7 (Dock) |
 
-**Aktuell: 154 Tests, 393 Asserts, 10 Test-Files, 0.73s, alle PASS.**
+**Aktuell: 161 Tests, 405 Asserts, 10 Test-Files, 0.74s, alle PASS.**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -300,63 +315,54 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 7. ~~CI/CD (GUT + GitHub Actions)~~ ✅ ERLEDIGT
 8. ~~Weitere LLM Provider (OpenAI, Anthropic)~~ ✅ ERLEDIGT
 9. ~~Schema-Retry~~ ✅ ERLEDIGT
-10. **Health-Check UI** (Provider-Konnektivitaet im Dock anzeigen, async health_check)
-11. **Model-Cache Persistence** (persistence.save_model_cache / load_model_cache nutzen)
+10. ~~Health-Check UI~~ ✅ ERLEDIGT
+11. ~~Model-Cache Persistence~~ ✅ ERLEDIGT
+12. **Documentation** (USER_GUIDE.md, OPERATOR_GUIDE.md, DEVELOPER_GUIDE.md)
+13. **Golden/Snapshot Tests** (determinism verification via frozen SceneSpec JSON)
 
 ---
 
-## Agenten-Prompt: Prio 9 — Health-Check UI + Model Cache
+## Agenten-Prompt: Prio 10 — Documentation
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4.A (UI Dock) und 4.C (LLM Provider).
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 8 (Documentation Plan).
 
-Prio 1-8 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
-CI/CD, OpenAI+Anthropic Provider, Schema-Retry).
-154 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 9 — Health-Check UI + Model Cache Persistence.
+Prio 1-9 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache).
+161 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 10 — Documentation.
 
-SCHRITT 1: Health-Check / Connection-Test im Dock
+SCHRITT 1: USER_GUIDE.md in addons/ai_scene_gen/docs/
+    - UI-Uebersicht (alle Dock-Elemente erklaert)
+    - Prompt-Tipps, Style-Presets, Seed/Determinismus
+    - Bounds, Asset Tags, Import/Export, Preview/Apply/Discard
+    - Variation Mode, Two-Stage Mode
+    - Health-Check / Connection-Test Erklaerung
 
-1a. `ui/ai_scene_gen_dock.gd`:
-    - Button "Test Connection" rechts neben dem Provider-Dropdown
-    - Label darunter fuer Ergebnis ("Connected — X models" / "Failed: ...")
-    - Button + Label nur sichtbar wenn Provider != MockProvider
-    - Neues Signal: `connection_test_requested(provider_name: String)`
-    - Button disabled waehrend Test laeuft (re-enable nach Callback)
+SCHRITT 2: OPERATOR_GUIDE.md in addons/ai_scene_gen/docs/
+    - Provider-Setup (MockProvider, Ollama, OpenAI, Anthropic)
+    - API Key Management (EditorSettings)
+    - Network Requirements, Offline Mode
+    - Performance Tuning (Node Limits, Poly Budget, Timeout)
+    - Security Hinweise
 
-1b. `plugin.gd`:
-    - Signal `connection_test_requested` verbinden
-    - Handler: `await provider.fetch_available_models()` als Connectivity-Proxy
-    - Bei Erfolg (models.size() > 0): dock.show_connection_result(true, models.size())
-    - Bei Fehler (models leer): dock.show_connection_result(false, 0)
-    - Nutze _provider_switch_id Pattern gegen Race Conditions
+SCHRITT 3: DEVELOPER_GUIDE.md in addons/ai_scene_gen/docs/
+    - Architektur-Uebersicht (Module A-L)
+    - Neuen Provider hinzufuegen
+    - Neuen Post-Processing Pass hinzufuegen
+    - Asset Packs registrieren
+    - Test-Konventionen, lokale Tests ausfuehren
 
-SCHRITT 2: Model Cache Persistence
+SCHRITT 4: TROUBLESHOOTING.md + FAQ.md
+    - Error-Code-Tabelle (alle Codes -> Ursache + Loesung)
+    - Haeufige Probleme
 
-2a. `plugin.gd` -> `_on_provider_changed()`:
-    - VOR async fetch: `persistence.load_model_cache(provider_name)` laden
-    - Wenn Cache nicht leer: sofort `dock.set_model_list(cached_models)` setzen
-    - NACH async fetch: `persistence.save_model_cache(provider_name, models)` speichern
-    - Beide Methoden existieren bereits in persistence.gd (save_model_cache / load_model_cache)
-    - Cache TTL ist 1h (max_age_seconds Parameter, Default 3600.0)
-
-2b. Analog beim Connection-Test: Cache aktualisieren wenn fetch erfolgreich
-
-SCHRITT 3: Tests
-
-3a. `test_dock.gd`:
-    - Test: connection_test_requested Signal wird emittiert
-    - Test: show_connection_result() zeigt korrektes Label
-    - Test: Button nur sichtbar wenn Provider != MockProvider
-
-3b. Lokal testen: Alle 154+ Tests muessen PASS sein
+3b. Lokal testen: Alle 161+ Tests muessen PASS sein
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
-Dock ist rein programmatisch (kein .tscn), alle UI-Elemente in Code erstellt.
-API Keys NIEMALS in Projekt-Dateien — nur EditorSettings.
 ```
 

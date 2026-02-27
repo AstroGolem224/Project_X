@@ -121,6 +121,7 @@ func _connect_signals() -> void:
 	_dock.provider_changed.connect(_on_provider_changed)
 	_dock.import_requested.connect(_on_import_requested)
 	_dock.export_requested.connect(_on_export_requested)
+	_dock.connection_test_requested.connect(_on_connection_test_requested)
 	_orchestrator.pipeline_state_changed.connect(_on_pipeline_state_changed)
 	_orchestrator.pipeline_progress.connect(_on_pipeline_progress)
 	_orchestrator.pipeline_completed.connect(_on_pipeline_completed)
@@ -141,6 +142,8 @@ func _disconnect_signals() -> void:
 			_dock.import_requested.disconnect(_on_import_requested)
 		if _dock.export_requested.is_connected(_on_export_requested):
 			_dock.export_requested.disconnect(_on_export_requested)
+		if _dock.connection_test_requested.is_connected(_on_connection_test_requested):
+			_dock.connection_test_requested.disconnect(_on_connection_test_requested)
 	if _orchestrator != null:
 		if _orchestrator.pipeline_state_changed.is_connected(_on_pipeline_state_changed):
 			_orchestrator.pipeline_state_changed.disconnect(_on_pipeline_state_changed)
@@ -366,6 +369,10 @@ func _on_provider_changed(provider_name: String) -> void:
 		_dock.set_api_key(stored_key)
 		provider.set_api_key(stored_key)
 
+	var cached_models: Array[String] = _persistence.load_model_cache(provider_name)
+	if not cached_models.is_empty():
+		_dock.set_model_list(cached_models)
+
 	var models_raw: Variant = await provider.fetch_available_models()
 	if _provider_switch_id != my_switch_id:
 		return
@@ -375,3 +382,31 @@ func _on_provider_changed(provider_name: String) -> void:
 		for m: Variant in models_raw as Array:
 			models.append(str(m))
 	_dock.set_model_list(models)
+	if not models.is_empty():
+		_persistence.save_model_cache(provider_name, models)
+
+
+func _on_connection_test_requested(provider_name: String) -> void:
+	_provider_switch_id += 1
+	var my_switch_id: int = _provider_switch_id
+
+	var provider: Variant = _providers.get(provider_name)
+	if provider == null:
+		_dock.show_connection_result(false, 0)
+		return
+
+	var models_raw: Variant = await provider.fetch_available_models()
+	if _provider_switch_id != my_switch_id:
+		return
+
+	var models: Array[String] = []
+	if models_raw is Array:
+		for m: Variant in models_raw as Array:
+			models.append(str(m))
+
+	if models.size() > 0:
+		_dock.show_connection_result(true, models.size())
+		_dock.set_model_list(models)
+		_persistence.save_model_cache(provider_name, models)
+	else:
+		_dock.show_connection_result(false, 0)

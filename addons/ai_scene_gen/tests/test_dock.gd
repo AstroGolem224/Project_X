@@ -135,6 +135,68 @@ func test_set_state_preview_ready() -> void:
 
 # endregion
 
+# region --- Connection test ---
+
+func test_connection_test_signal_emitted() -> void:
+	var providers: Array[String] = ["MockProvider", "Ollama"]
+	_dock.set_provider_list(providers)
+	_dock._provider_dropdown.select(1)
+	_dock._update_connection_test_visibility()
+	watch_signals(_dock)
+	_dock._on_test_connection_pressed()
+	assert_signal_emitted(_dock, "connection_test_requested")
+
+
+func test_connection_test_signal_has_provider_name() -> void:
+	var providers: Array[String] = ["MockProvider", "Ollama"]
+	_dock.set_provider_list(providers)
+	_dock._provider_dropdown.select(1)
+	_dock._update_connection_test_visibility()
+	watch_signals(_dock)
+	_dock._on_test_connection_pressed()
+	var params: Array = get_signal_parameters(_dock, "connection_test_requested")
+	assert_eq(params[0], "Ollama", "signal should carry provider name")
+
+
+func test_show_connection_result_success() -> void:
+	_dock.show_connection_result(true, 5)
+	assert_eq(_dock._connection_result_label.text, "Connected — 5 models")
+	assert_true(_dock._connection_result_label.visible, "result label should be visible")
+	assert_false(_dock._test_connection_button.disabled, "button should be re-enabled")
+
+
+func test_show_connection_result_failure() -> void:
+	_dock.show_connection_result(false, 0)
+	assert_string_contains(_dock._connection_result_label.text, "Failed")
+	assert_true(_dock._connection_result_label.visible, "result label should be visible")
+	assert_false(_dock._test_connection_button.disabled, "button should be re-enabled")
+
+
+func test_connection_test_button_hidden_for_mock() -> void:
+	var providers: Array[String] = ["MockProvider", "Ollama"]
+	_dock.set_provider_list(providers)
+	assert_false(_dock._test_connection_button.visible, "button should be hidden for MockProvider")
+
+
+func test_connection_test_button_visible_for_ollama() -> void:
+	var providers: Array[String] = ["MockProvider", "Ollama"]
+	_dock.set_provider_list(providers)
+	_dock._provider_dropdown.select(1)
+	_dock._update_connection_test_visibility()
+	assert_true(_dock._test_connection_button.visible, "button should be visible for Ollama")
+
+
+func test_connection_test_button_disabled_during_test() -> void:
+	var providers: Array[String] = ["MockProvider", "Ollama"]
+	_dock.set_provider_list(providers)
+	_dock._provider_dropdown.select(1)
+	_dock._update_connection_test_visibility()
+	_dock._on_test_connection_pressed()
+	assert_true(_dock._test_connection_button.disabled, "button should be disabled during test")
+	assert_eq(_dock._connection_result_label.text, "Testing…", "label should show testing state")
+
+# endregion
+
 # region --- Provider and model lists ---
 
 func test_set_provider_list() -> void:
