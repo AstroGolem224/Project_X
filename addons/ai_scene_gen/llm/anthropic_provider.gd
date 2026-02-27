@@ -7,8 +7,13 @@ extends LLMProvider
 
 const API_BASE_URL: String = "https://api.anthropic.com"
 const MESSAGES_ENDPOINT: String = "/v1/messages"
+const MODELS_ENDPOINT: String = "/v1/models"
 const ANTHROPIC_VERSION: String = "2023-06-01"
-const DEFAULT_MODELS: Array[String] = ["claude-sonnet-4-20250514"]
+const DEFAULT_MODELS: Array[String] = [
+	"claude-sonnet-4-20250514",
+	"claude-opus-4-20250514",
+	"claude-haiku-3-5-20241022",
+]
 const MAX_TOKENS: int = 4096
 
 var _cached_models: Array[String] = []
@@ -47,9 +52,60 @@ func health_check() -> Dictionary:
 	return {"status": "unknown", "message": "Use send_request() for connectivity check"}
 
 
-## Anthropic does not expose a public model-list endpoint.
-## Returns hardcoded default models.
+## Fetches available models from Anthropic's /v1/models endpoint.
+## Filters to claude models. Falls back to cached/default on failure.
 func fetch_available_models() -> Array[String]:
+	if _http_node == null or _api_key.is_empty():
+		return _cached_models.duplicate()
+
+	if _http_node.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		_log("warning", "fetch_models skipped: HTTPRequest busy")
+		return _cached_models.duplicate()
+
+	var url: String = API_BASE_URL + MODELS_ENDPOINT
+	var headers: Array[String] = [
+		"x-api-key: %s" % _api_key,
+		"anthropic-version: %s" % ANTHROPIC_VERSION,
+		"Accept: application/json",
+	]
+
+	var err: int = _http_node.request(url, headers, HTTPClient.METHOD_GET)
+	if err != OK:
+		_log("warning", "fetch_models request() failed: %d" % err)
+		return _cached_models.duplicate()
+
+	var result: Array = await _http_node.request_completed
+	var http_result: int = result[0] as int
+	var response_code: int = result[1] as int
+	var body: PackedByteArray = result[3] as PackedByteArray
+
+	if http_result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		_log("warning", "fetch_models failed: http_result=%d, code=%d" % [http_result, response_code])
+		return _cached_models.duplicate()
+
+	var body_text: String = body.get_string_from_utf8()
+	var parsed: Variant = JSON.parse_string(body_text)
+	if parsed == null or not (parsed is Dictionary):
+		_log("warning", "fetch_models: invalid JSON response")
+		return _cached_models.duplicate()
+
+	var data: Dictionary = parsed as Dictionary
+	var models_raw: Variant = data.get("data", [])
+	if not (models_raw is Array):
+		return _cached_models.duplicate()
+
+	var models: Array[String] = []
+	for entry: Variant in models_raw as Array:
+		if entry is Dictionary:
+			var model_id: String = str((entry as Dictionary).get("id", ""))
+			if model_id.begins_with("claude-"):
+				models.append(model_id)
+
+	if models.is_empty():
+		return _cached_models.duplicate()
+
+	_cached_models = models.duplicate()
+	_log("info", "fetched %d Claude model(s) from Anthropic" % models.size())
 	return _cached_models.duplicate()
 
 

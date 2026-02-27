@@ -121,13 +121,15 @@ func test_cancel_with_http_node_no_crash() -> void:
 
 func test_get_available_models_returns_defaults() -> void:
 	var models: Array[String] = _provider.get_available_models()
-	assert_gt(models.size(), 0, "should return at least one default model")
+	assert_eq(models.size(), 3, "should return 3 default models")
 	assert_has(models, "claude-sonnet-4-20250514", "should contain claude-sonnet-4-20250514")
+	assert_has(models, "claude-opus-4-20250514", "should contain claude-opus-4-20250514")
+	assert_has(models, "claude-haiku-3-5-20241022", "should contain claude-haiku-3-5-20241022")
 
 
-func test_fetch_models_returns_hardcoded() -> void:
+func test_fetch_models_falls_back_without_config() -> void:
 	var models: Array[String] = await _provider.fetch_available_models()
-	assert_gt(models.size(), 0, "should return hardcoded models")
+	assert_eq(models.size(), 3, "should fall back to defaults without HTTP node")
 	assert_has(models, "claude-sonnet-4-20250514")
 
 # endregion
