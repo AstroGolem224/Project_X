@@ -105,6 +105,7 @@ var _material_preset_dropdown: OptionButton
 var _material_preview_panel: PanelContainer
 var _material_preview_labels: Dictionary = {}
 var _texture_edits: Dictionary = {}
+var _preview_info_label: Label
 var _state: int = DockState.IDLE
 var _generation_start_msec: int = 0
 var _progress_tween: Tween = null
@@ -201,6 +202,7 @@ func set_state(new_state: int) -> void:
 			_export_button.disabled = false
 			_progress_bar.visible = false
 			_elapsed_label.visible = false
+			_preview_info_label.visible = false
 			_status_label.text = "Ready"
 			_stop_elapsed_timer()
 		DockState.GENERATING:
@@ -212,6 +214,7 @@ func set_state(new_state: int) -> void:
 			_export_button.disabled = true
 			_progress_bar.visible = true
 			_elapsed_label.visible = true
+			_preview_info_label.visible = false
 			_status_label.text = "Generating…"
 			_start_elapsed_timer()
 		DockState.PREVIEW_READY:
@@ -234,6 +237,7 @@ func set_state(new_state: int) -> void:
 			_export_button.disabled = false
 			_progress_bar.visible = false
 			_elapsed_label.visible = false
+			_preview_info_label.visible = false
 			_status_label.text = "Errors occurred."
 			_stop_elapsed_timer()
 
@@ -447,6 +451,17 @@ func show_connection_result(success: bool, model_count: int) -> void:
 	else:
 		_connection_result_label.text = "Failed: could not reach provider"
 		_connection_result_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+
+
+## Displays build statistics (node count, group count, max depth) in the preview info label.
+func show_preview_info(node_count: int, group_count: int, max_depth: int) -> void:
+	var parts: Array[String] = ["%d nodes" % node_count]
+	if group_count > 0:
+		parts.append("%d groups" % group_count)
+	if max_depth > 0:
+		parts.append("depth %d" % max_depth)
+	_preview_info_label.text = ", ".join(PackedStringArray(parts))
+	_preview_info_label.visible = true
 
 
 ## Remove all errors and hide the error panel.
@@ -1155,6 +1170,13 @@ func _build_status_section(parent: VBoxContainer) -> void:
 	_progress_bar.value = 0
 	_progress_bar.visible = false
 	parent.add_child(_progress_bar)
+
+	_preview_info_label = Label.new()
+	_preview_info_label.text = ""
+	_preview_info_label.visible = false
+	_preview_info_label.add_theme_font_size_override("font_size", 12)
+	_preview_info_label.add_theme_color_override("font_color", Color(0.5, 0.8, 1.0))
+	parent.add_child(_preview_info_label)
 
 
 func _build_error_section(parent: VBoxContainer) -> void:

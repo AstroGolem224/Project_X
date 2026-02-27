@@ -264,8 +264,16 @@ func _on_pipeline_progress(percent: float, message: String) -> void:
 
 
 func _on_pipeline_completed(_spec: Dictionary) -> void:
-	if _dock != null:
-		_dock.show_progress(1.0, "Preview ready. Apply or discard.")
+	if _dock == null:
+		return
+	_dock.show_progress(1.0, "Preview ready. Apply or discard.")
+	var build_result: RefCounted = _orchestrator.get_last_build_result()
+	if build_result != null:
+		_dock.show_preview_info(
+			build_result.get_node_count(),
+			build_result.get_group_count(),
+			build_result.get_max_depth(),
+		)
 
 
 func _on_pipeline_failed(errors: Array[Dictionary]) -> void:

@@ -19,6 +19,8 @@ var _primitive_factory: RefCounted = null
 var _errors: Array[Dictionary] = []
 var _node_count: int = 0
 var _triangle_count: int = 0
+var _group_count: int = 0
+var _max_depth_reached: int = 0
 
 
 func _init(logger: RefCounted = null, primitive_factory: RefCounted = null) -> void:
@@ -36,6 +38,8 @@ func build(resolved_spec: Dictionary, root: Node3D) -> BuildResult:
 	_errors.clear()
 	_node_count = 0
 	_triangle_count = 0
+	_group_count = 0
+	_max_depth_reached = 0
 
 	var limits: Dictionary = resolved_spec.get("limits", {})
 	var max_tree_depth: int = limits.get("max_tree_depth", 16) as int
@@ -66,10 +70,10 @@ func build(resolved_spec: Dictionary, root: Node3D) -> BuildResult:
 		_log("error", "build failed with %d error(s) in %dms" % [_errors.size(), duration_ms])
 		return BuildResult.create_failure(_errors, duration_ms)
 
-	_log("info", "build succeeded: %d nodes, %d tris, hash=%s in %dms" % [
-		_node_count, _triangle_count, hash_val, duration_ms
+	_log("info", "build succeeded: %d nodes, %d tris, %d groups, depth=%d, hash=%s in %dms" % [
+		_node_count, _triangle_count, _group_count, _max_depth_reached, hash_val, duration_ms
 	])
-	return BuildResult.create_success(root, _node_count, _triangle_count, hash_val, duration_ms)
+	return BuildResult.create_success(root, _node_count, _triangle_count, hash_val, duration_ms, _group_count, _max_depth_reached)
 
 
 ## Produces a deterministic SHA-256 hash of the spec for cache/diffing.
@@ -270,8 +274,12 @@ func _build_node(node: Dictionary, parent: Node3D, depth: int, max_depth: int) -
 
 	parent.add_child(instance)
 	_node_count += 1
+	if depth > _max_depth_reached:
+		_max_depth_reached = depth
 
 	var children: Array = node.get("children", []) as Array
+	if not children.is_empty():
+		_group_count += 1
 	for i: int in range(children.size()):
 		_build_node(children[i] as Dictionary, instance, depth + 1, max_depth)
 

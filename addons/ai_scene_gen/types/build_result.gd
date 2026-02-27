@@ -8,6 +8,8 @@ var _success: bool = false
 var _root: Node3D = null
 var _node_count: int = 0
 var _triangle_count: int = 0
+var _group_count: int = 0
+var _max_depth: int = 0
 var _errors: Array[Dictionary] = []
 var _build_duration_ms: int = 0
 var _build_hash: String = ""
@@ -19,8 +21,10 @@ var _build_hash: String = ""
 ## @param triangle_count: Total mesh triangle count.
 ## @param build_hash: Hash identifying this build.
 ## @param duration_ms: Build duration in milliseconds.
+## @param group_count: Number of nodes that have children (group parents).
+## @param max_depth: Maximum nesting depth reached during build.
 ## @return A configured BuildResult instance.
-static func create_success(root: Node3D, node_count: int, triangle_count: int, build_hash: String, duration_ms: int) -> BuildResult:
+static func create_success(root: Node3D, node_count: int, triangle_count: int, build_hash: String, duration_ms: int, group_count: int = 0, max_depth: int = 0) -> BuildResult:
 	var r: BuildResult = BuildResult.new()
 	r._success = true
 	r._root = root
@@ -28,6 +32,8 @@ static func create_success(root: Node3D, node_count: int, triangle_count: int, b
 	r._triangle_count = triangle_count
 	r._build_hash = build_hash
 	r._build_duration_ms = duration_ms
+	r._group_count = group_count
+	r._max_depth = max_depth
 	return r
 
 
@@ -69,3 +75,11 @@ func get_build_duration_ms() -> int:
 
 func get_build_hash() -> String:
 	return _build_hash
+
+
+func get_group_count() -> int:
+	return _group_count
+
+
+func get_max_depth() -> int:
+	return _max_depth

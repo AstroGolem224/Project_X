@@ -51,6 +51,7 @@ var _preview_layer: RefCounted = null
 var _primitive_factory: RefCounted = null
 var _last_spec: Dictionary = {}
 var _last_errors: Array[Dictionary] = []
+var _last_build_result: RefCounted = null
 var _correlation_id: String = ""
 
 
@@ -103,6 +104,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 
 	_last_spec = {}
 	_last_errors = []
+	_last_build_result = null
 	_correlation_id = "run_" + str(Time.get_ticks_msec())
 	var my_correlation: String = _correlation_id
 	_log("info", "pipeline started [%s]" % _correlation_id)
@@ -287,6 +289,7 @@ func start_generation(request: Dictionary, scene_root: Node3D) -> void:
 		_fail_pipeline_with_errors(_last_errors)
 		return
 
+	_last_build_result = build_result
 	if _logger != null:
 		_logger.record_metric("build_node_count", build_result.get_node_count())
 		_logger.record_metric("build_duration_ms", build_result.get_build_duration_ms())
@@ -370,6 +373,7 @@ func rebuild_from_spec(spec: Dictionary, scene_root: Node3D) -> void:
 
 	_last_spec = {}
 	_last_errors = []
+	_last_build_result = null
 	_correlation_id = "rebuild_" + str(Time.get_ticks_msec())
 	_log("info", "rebuild started [%s]" % _correlation_id)
 
@@ -415,6 +419,7 @@ func rebuild_from_spec(spec: Dictionary, scene_root: Node3D) -> void:
 		_fail_pipeline_with_errors(_last_errors)
 		return
 
+	_last_build_result = build_result
 	if _logger != null:
 		_logger.record_metric("build_node_count", build_result.get_node_count())
 		_logger.record_metric("build_duration_ms", build_result.get_build_duration_ms())
@@ -460,6 +465,11 @@ func get_last_spec() -> Dictionary:
 ## Returns errors from the most recent pipeline failure.
 func get_last_errors() -> Array[Dictionary]:
 	return _last_errors
+
+
+## Returns the BuildResult from the most recent successful build, or null.
+func get_last_build_result() -> RefCounted:
+	return _last_build_result
 
 
 # ---------------------------------------------------------------------------

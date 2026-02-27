@@ -794,7 +794,7 @@ func _validate_single_node(
 				"Use an allowed primitive_shape"
 			))
 
-	# --- position + bounds ---
+	# --- position + bounds (skip bounds for children — their positions are relative) ---
 	if node.has("position"):
 		if not _is_vec3(node["position"]):
 			errors.append(_make_error(
@@ -804,7 +804,7 @@ func _validate_single_node(
 				"error",
 				"Provide [x, y, z] position"
 			))
-		elif bounds.size() == 3 and not _check_bounds(node["position"] as Array, bounds):
+		elif depth <= 1 and bounds.size() == 3 and not _check_bounds(node["position"] as Array, bounds):
 			errors.append(_make_error(
 				"SPEC_ERR_BOUNDS",
 				"Node position %s is outside bounds %s" % [

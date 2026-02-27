@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES + ADVANCED-MATERIALS + TEXTURE-MAPPING (Phase 1-6 + Prio 1-17)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION + GOLDEN-TESTS + BENCHMARKS + INTEGRATION-TESTS + UI-POLISH + SCENE-TEMPLATES + ADVANCED-MATERIALS + TEXTURE-MAPPING + HIERARCHICAL-GROUPS (Phase 1-6 + Prio 1-18)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -30,7 +30,8 @@ Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ
 Golden/Snapshot Tests verifizieren Determinismus via frozen SceneSpec JSON.
 Performance Benchmarks verifizieren lineare Build-Time-Skalierung und Cleanup.
 Real LLM Integration Tests mit Skip-Guard fuer optionale Ollama/OpenAI E2E.
-298 GUT Tests (16 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Hierarchical Node Groups: LLM erzeugt logische Gruppen (Tisch = Platte + Beine).
+330 GUT Tests (17 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
 
@@ -268,7 +269,52 @@ Provider-Dropdown Verdrahtung
   - Explizite Warnung: LLM soll keine Pfade erfinden
 - 17 neue Tests in test_textures.gd (Validator, Factory, Builder, Compiler, Dock, Golden Compat)
 
-### File-Inventar (37 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
+**Prio 18: Hierarchical Node Groups / Parenting (✅ ERLEDIGT)**
+
+- LLM System Instructions:
+  - Regel 15 im SYSTEM_TEMPLATE: explizite Gruppierungs-Empfehlungen
+  - Beispiele: Tisch (Node3D + Platte + Beine), Haus (Waende + Dach),
+    Baum (Stamm + Krone), Fels-Cluster (Einzelfelsen)
+  - "Children positions are RELATIVE to their parent" prominent dokumentiert
+  - Empfehlung: Gruppen-Parent node_type=Node3D, scale=[1,1,1], max depth <= 4
+- Validator Verbesserungen:
+  - Bounds-Check wird fuer Child-Nodes (depth > 1) uebersprungen,
+    da deren Positionen relativ zum Parent sind
+  - `_validate_single_node()` nutzt depth-Parameter fuer Bounds-Skip
+  - `max_tree_depth` Enforcement via `_max_depth_recursive()` bleibt unveraendert
+  - Unique-ID Check ueber alle Nodes (inkl. Children) bleibt aktiv
+- SceneBuilder Group-Tracking:
+  - `_group_count: int` zaehlt Nodes mit nicht-leerem children-Array
+  - `_max_depth_reached: int` trackt maximale Verschachtelungstiefe
+  - Children-Positionen sind relativ zum Parent (Godot-Standard)
+  - Kein Scale-Inheritance Problem: Primitive-Groessen sind Mesh-basiert
+- BuildResult Erweiterung:
+  - `_group_count: int` + `get_group_count() -> int`
+  - `_max_depth: int` + `get_max_depth() -> int`
+  - `create_success()` um optionale Parameter erweitert (rueckwaerts-kompatibel)
+- Orchestrator:
+  - `_last_build_result: RefCounted` speichert letztes Build-Ergebnis
+  - `get_last_build_result() -> RefCounted` Getter fuer plugin.gd
+- Dock UI:
+  - `_preview_info_label: Label` zeigt "N nodes, M groups, depth D"
+  - `show_preview_info(node_count, group_count, max_depth)` public API
+  - Label sichtbar nur in PREVIEW_READY, versteckt in IDLE/GENERATING/ERROR
+  - Farbe: hellblau (Color(0.5, 0.8, 1.0))
+- Plugin Wiring:
+  - `_on_pipeline_completed()` liest BuildResult via Orchestrator-Getter
+  - Ruft `dock.show_preview_info()` mit group_count und max_depth
+- 22 neue Tests in test_hierarchy.gd:
+  - Builder: table group, node count, parenting, relative positions,
+    depth tracking, nested chain, deep nesting rejected, multiple groups,
+    flat spec zero groups
+  - Validator: nested spec accepted, children skip bounds, depth enforcement,
+    duplicate IDs across children
+  - Prompt Compiler: grouping instructions present
+  - BuildResult: default values, explicit values
+  - Dock: preview info display, no-groups mode, hidden on idle
+  - Golden compat: interior_room children present, builds with groups
+
+### File-Inventar (38 .gd + 3 .json + 2 .md + 1 .yml + plugin.cfg + project.godot)
 
 ```
 addons/ai_scene_gen/
@@ -323,6 +369,7 @@ addons/ai_scene_gen/
     test_templates.gd                  # 38 Tests (SceneTemplate Resource, Manager CRUD, Dock template UI)
     test_materials.gd                  # 34 Tests (Material Presets, PBR creation, Validator, Builder, Dock)
     test_textures.gd                   # 17 Tests (Texture schema, loading, fallback, compiler, dock, golden compat)
+    test_hierarchy.gd                  # 22 Tests (Builder groups, validator hierarchy, prompt grouping, dock info)
     test_integration.gd                # 10 Tests (Real LLM connectivity, E2E pipeline, validation chain)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
@@ -485,8 +532,9 @@ Anthropic Models + MAX_TOKENS + Light-Type Auto-Patch (Post-Prio-15 Bugfixes).
 | 15 | Scene Templates / Presets (builtin + custom, CRUD, import/export, dock UI) | 38 (Templates) |
 | 16 | Advanced Materials (PBR presets, metallic/emission/transparency, validator, builder, dock UI) | 34 (Materials) |
 | 17 | Texture Mapping / UV Support (texture schema, loading, fallback, dock UI, compiler) | 17 (Textures) |
+| 18 | Hierarchical Node Groups / Parenting (LLM grouping, builder tracking, validator bounds-skip, dock info) | 22 (Hierarchy) |
 
-**Aktuell: 298 Tests, 16 Test-Files, 288 PASS + 10 Pending (Integration skip).**
+**Aktuell: 330 Tests, 17 Test-Files, 320 PASS + 10 Pending (Integration skip).**
 
 Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
@@ -550,46 +598,24 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 17. ~~Scene Templates / Presets~~ ✅ ERLEDIGT (SceneTemplate Resource, 3 Built-in, Custom CRUD, Import/Export, Dock UI)
 18. ~~Advanced Materials~~ ✅ ERLEDIGT (22 PBR Presets, Metallic/Emission/Transparency, Validator, Builder, Dock UI)
 19. ~~Texture Mapping / UV Support~~ ✅ ERLEDIGT (5 Textur-Kanaele, Schema-Validation, ResourceLoader, Dock UI, Compiler)
+20. ~~Hierarchical Node Groups~~ ✅ ERLEDIGT (LLM Grouping Instructions, Validator Bounds-Skip, Builder Group-Tracking, Dock Preview Info)
 
 ---
 
-## Agenten-Prompt: Prio 18 — Hierarchical Node Groups / Parenting
+## Agenten-Prompt: Prio 19 — (naechstes Feature)
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
 
-Prio 1-17 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+Prio 1-18 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
 CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
 Documentation, Golden/Snapshot Tests, Performance Profiling, Integration Tests,
 UI Polish + UX Improvements, Scene Templates / Presets, Advanced Materials,
-Texture Mapping / UV Support).
-298 GUT Tests (16 Test-Files) laufen headless, GitHub Actions CI aktiv.
-Naechster Schritt: Prio 18 — Hierarchical Node Groups / Parenting.
-
-ZIEL: LLM soll logische Gruppen von Nodes erzeugen koennen
-(z.B. "Tisch" = Node3D-Gruppe mit Platte + 4 Beinen).
-Aktuell werden alle Nodes flach unter dem Root erzeugt.
-
-SCHRITT 1: Schema fuer Node Groups
-    - Nodes koennen optional children haben (bereits im Schema, wird aber
-      vom LLM selten genutzt)
-    - LLM System Instructions explizit um Gruppierungs-Empfehlungen erweitern
-    - Validator: max_tree_depth enforcement verbessern
-
-SCHRITT 2: Builder Group-Support verbessern
-    - SceneBuilder: children-Positionen relativ zum Parent transformieren
-    - Korrekte Scale-Vererbung bei verschachtelten Gruppen
-
-SCHRITT 3: UI fuer Gruppen
-    - Node-Tree Ansicht in Preview (optional, Info-Label)
-    - Gruppen-Info im Status anzeigen
-
-SCHRITT 4: Tests + HANDOFF.md
-    - Neue Tests fuer hierarchische Szenen
-    - Alle 298+ Tests muessen PASS sein
-    - HANDOFF.md updaten, committen und pushen
+Texture Mapping / UV Support, Hierarchical Node Groups).
+330 GUT Tests (17 Test-Files) laufen headless, GitHub Actions CI aktiv.
+Naechster Schritt: Prio 19 — [TBD].
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
 ```

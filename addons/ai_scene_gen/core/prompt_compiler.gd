@@ -58,6 +58,16 @@ RULES:
 13. Set spec_version to "1.0.0". Set generator to "ai_scene_gen".
 14. Do not include code, scripts, file paths, or unsupported fields.
     If unsure, choose safe primitive fallbacks.
+15. Use "children" arrays to group logically related nodes into
+    hierarchical groups. A group parent should be node_type "Node3D"
+    with scale [1,1,1]. Children positions are RELATIVE to their parent.
+    Examples of good grouping:
+    - Table: Node3D group containing table_top (box) + 4 legs (cylinders)
+    - House: Node3D group containing walls, roof, door
+    - Tree: Node3D group containing trunk (cylinder) + canopy (sphere)
+    - Rock cluster: Node3D group containing individual rocks
+    Prefer grouped structures over flat layouts when objects have
+    logical sub-parts. Keep max nesting depth <= 4.
 
 AVAILABLE ASSET TAGS: {asset_tags}
 PROJECT CONSTRAINTS: {constraints}
