@@ -93,7 +93,7 @@ addons/ai_scene_gen/
   plugin.gd                            # EditorPlugin Entry — verdrahtet alle Module
   core/
     orchestrator.gd                    # B: Async Pipeline State Machine
-    prompt_compiler.gd                 # D: Prompt-Zusammenbau (single + two-stage)
+    prompt_compiler.gd                 # D: Prompt-Zusammenbau (single + two-stage + retry-stage)
     scene_spec_validator.gd            # E: Schema-Validierung (1269 Zeilen)
     scene_builder.gd                   # H: Deterministischer Builder
     post_processor.gd                  # I: 5 Post-Processing Passes
@@ -222,72 +222,33 @@ Shared (ab Validation):
 3. **Shared HTTPRequest** — Ein HTTPRequest-Node fuer alle Provider.
    Bei Cancel bleibt der alte Coroutine suspended (Correlation-ID Guard
    verhindert Seiteneffekte). Akzeptabler Tradeoff fuer MVP.
-4. ~~**Nur Single-Stage Mode**~~ ✅ GEFIXT — Two-Stage Mode implementiert
-   im Orchestrator mit Heuristik (>30 Woerter oder CheckBox).
-5. ~~**Schema-Retry nicht implementiert**~~ ✅ GEFIXT — `MAX_SCHEMA_RETRIES = 2`,
-   Orchestrator ruft `compile_retry_stage()` mit Validation-Errors auf und sendet
-   den korrigierten Prompt an den LLM. Cancellation-Guard nach jedem Retry-Await.
-6. ~~**Error-Code Prefixes inkonsistent**~~ ✅ GEFIXT — Dock nutzt jetzt
-   `UI_ERR_EMPTY_PROMPT`, `UI_ERR_INVALID_BOUNDS`, `UI_ERR_INVALID_SEED`.
-7. ~~**`get_editor_interface()` deprecated**~~ ✅ GEFIXT — plugin.gd nutzt
-   jetzt `EditorInterface` Singleton (4 Stellen ersetzt).
-8. ~~**Nur MockProvider + OllamaProvider**~~ ✅ GEFIXT — OpenAIProvider und
-   AnthropicProvider sind implementiert und in die Provider-Registry integriert.
+4. **Model-Cache nicht genutzt** — `persistence.save_model_cache()` /
+   `load_model_cache()` sind implementiert aber nicht verdrahtet. Models
+   werden bei jedem Provider-Switch frisch per HTTP gefetcht.
+5. **Kein Health-Check im UI** — `health_check()` existiert auf allen
+   Providern, wird aber nicht im Dock exponiert. Kein visuelles Feedback
+   ob der Provider erreichbar ist bevor man generiert.
 
-## Fehlende Features (nach Architektur-Doc, priorisiert)
+Bereits gefixt: Two-Stage Mode (Prio 4), Schema-Retry (Prio 8),
+Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
+4 Provider statt 2 (Prio 7).
 
-### ~~Prio 1: Async Pipeline + LLM Provider~~ ✅ ERLEDIGT
+## Erledigte Features (Prio 1-8, alle ✅)
 
-### ~~Prio 2: EditorUndoRedoManager~~ ✅ ERLEDIGT
+| Prio | Feature | Tests hinzugefuegt |
+|------|---------|-------------------|
+| 1 | Async Pipeline + LLM Provider (Ollama, MockProvider) | 14 (Ollama) |
+| 2 | EditorUndoRedoManager | — (in Orchestrator-Tests) |
+| 3 | Import/Export UI (EditorFileDialog, SceneSpec I/O) | — (in Dock-Tests) |
+| 4 | Two-Stage Mode + Code-Fixes | 12 (Orchestrator) |
+| 5 | Variation Mode + Asset Tag Browser | 14 (Dock) + 3 (Compiler) |
+| 6 | CI/CD (GUT 9.6.0 + GitHub Actions) | 5 Fixes |
+| 7 | OpenAI + Anthropic Provider | 19+19 (Provider) |
+| 8 | Schema-Retry mit Error-Feedback | 3 (Orchestrator) + 4 (Compiler) |
 
-### ~~Prio 3: Import/Export UI~~ ✅ ERLEDIGT
+**Aktuell: 154 Tests, 393 Asserts, 10 Test-Files, 0.73s, alle PASS.**
 
-### ~~Prio 4: Two-Stage Mode~~ ✅ ERLEDIGT
-
-### Prio 5: Variation Mode + Asset Tag Browser (✅ ERLEDIGT)
-
-- FR-14: Variation CheckBox im Dock, Random Suffix an Prompt via PromptCompiler
-  `[variation_seed={randi()}]` wird an user_prompt angehängt bevor kompiliert wird
-- FR-13: Aufklappbarer "Available Asset Tags" Browser im Dock
-  - Liest Tags aus AssetTagRegistry (via Orchestrator -> plugin.gd -> dock)
-  - Selektierte Tags werden in `get_generation_request()["available_asset_tags"]` aufgenommen
-  - Zeigt "No asset tags registered" wenn Registry leer
-- plugin.gd: `_sync_asset_tags_to_dock()` leitet Registry-Tags an Dock weiter
-
-### Prio 6: CI/CD mit GUT + GitHub Actions (✅ ERLEDIGT)
-
-- GUT 9.6.0 als Test-Framework (addons/gut/ via git clone, in .gitignore)
-- `.gutconfig.json` im Projekt-Root: Test-Dirs, Prefix, Suffix, should_exit
-- 3 neue Test-Files:
-  - `test_ollama_provider.gd` (14 Tests): Provider-Config, Error Guards, Cancel, Default Models
-  - `test_orchestrator.gd` (12 Tests): State Management, Pipeline mit MockProvider, Cancel, Two-Stage, Correlation ID
-  - `test_dock.gd` (14 Tests): Request Shape, Variation/Two-Stage Flags, Asset Tags, State Transitions
-- 3 Variation-Tests zu `test_prompt_compiler.gd` hinzugefuegt
-- 5 bestehende Tests gefixt (GUT Error-Tracking: `assert_push_error`, `assert_engine_error_count`)
-- `.github/workflows/test.yml`: push + PR auf main, Godot 4.6.1 headless, GUT runner
-- CI Badge in README.md
-- **109 Tests, 322 Asserts, 0.6s Runtime, alle PASS**
-
-### Prio 7: Weitere LLM Provider (✅ ERLEDIGT)
-
-- OpenAIProvider: GPT-4o/GPT-4o-mini, Chat Completions API, JSON mode,
-  Bearer Auth, Token Usage Extraction, Model-Fetch via /v1/models
-- AnthropicProvider: Claude (claude-sonnet-4-20250514), Messages API,
-  x-api-key + anthropic-version Header, Content Block Extraction
-- Plugin-Integration: Provider-Registry (4 Provider: Mock, Ollama, OpenAI, Anthropic),
-  API-Key Persistence via EditorSettings, Host-URL nur fuer Ollama
-- 19 Tests pro Provider (Config, Error Guards, Cancel, Models, Token Extraction)
-
-### Prio 8: Schema-Retry (✅ ERLEDIGT)
-
-- `MAX_SCHEMA_RETRIES = 2` im Orchestrator (bis zu 2 Schema-Retries nach fehlgeschlagener Validation)
-- `PromptCompiler.compile_retry_stage(request, invalid_json, errors)`:
-  Base-Prompt + invalides JSON (truncated 2000 chars) + Validation-Error-Details
-- Orchestrator: Schema-Retry Loop nach Validation mit Cancellation-Guard nach jedem Await
-- Pipeline-Progress: "Schema retry 1/2..." / "Schema retry 2/2..."
-- 3 neue Orchestrator-Tests (Schema-Retry Success, Exhaustion, Error-Feedback im Prompt)
-- 4 neue PromptCompiler-Tests (Error Feedback, Base Prompt, Truncation, Empty Prompt Guard)
-- **154 Tests, 393 Asserts, 0.73s Runtime, alle PASS**
+Details zu jedem Prio-Schritt: siehe git log (`feat:` Commits).
 
 ## GDScript Konventionen (STRIKT EINHALTEN)
 
@@ -350,24 +311,52 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
+Danach ARCHITECTURE_INTEGRATED.md Abschnitt 4.A (UI Dock) und 4.C (LLM Provider).
 
-Prio 1-8 sind erledigt. 154 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Prio 1-8 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+CI/CD, OpenAI+Anthropic Provider, Schema-Retry).
+154 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
 Naechster Schritt: Prio 9 — Health-Check UI + Model Cache Persistence.
 
-SCHRITT 1: Health-Check Button im Dock
+SCHRITT 1: Health-Check / Connection-Test im Dock
 
-- Button "Test Connection" neben Provider-Dropdown
-- Ruft provider.health_check() async auf (oder fetch_available_models als Proxy)
-- Zeigt Ergebnis als Label: "Connected (X models)" / "Connection failed: ..."
-- Nur sichtbar wenn Provider needs_api_key() oder needs_base_url()
+1a. `ui/ai_scene_gen_dock.gd`:
+    - Button "Test Connection" rechts neben dem Provider-Dropdown
+    - Label darunter fuer Ergebnis ("Connected — X models" / "Failed: ...")
+    - Button + Label nur sichtbar wenn Provider != MockProvider
+    - Neues Signal: `connection_test_requested(provider_name: String)`
+    - Button disabled waehrend Test laeuft (re-enable nach Callback)
+
+1b. `plugin.gd`:
+    - Signal `connection_test_requested` verbinden
+    - Handler: `await provider.fetch_available_models()` als Connectivity-Proxy
+    - Bei Erfolg (models.size() > 0): dock.show_connection_result(true, models.size())
+    - Bei Fehler (models leer): dock.show_connection_result(false, 0)
+    - Nutze _provider_switch_id Pattern gegen Race Conditions
 
 SCHRITT 2: Model Cache Persistence
 
-- persistence.save_model_cache() / load_model_cache() sind schon implementiert
-- Nach erfolgreichem fetch_available_models(): Cache speichern
-- Beim Provider-Switch: Cache laden bevor async fetch
-- Cache TTL: 1h (bereits in load_model_cache als max_age_seconds)
+2a. `plugin.gd` -> `_on_provider_changed()`:
+    - VOR async fetch: `persistence.load_model_cache(provider_name)` laden
+    - Wenn Cache nicht leer: sofort `dock.set_model_list(cached_models)` setzen
+    - NACH async fetch: `persistence.save_model_cache(provider_name, models)` speichern
+    - Beide Methoden existieren bereits in persistence.gd (save_model_cache / load_model_cache)
+    - Cache TTL ist 1h (max_age_seconds Parameter, Default 3600.0)
 
-SCHRITT 3: Tests + HANDOFF.md updaten
+2b. Analog beim Connection-Test: Cache aktualisieren wenn fetch erfolgreich
+
+SCHRITT 3: Tests
+
+3a. `test_dock.gd`:
+    - Test: connection_test_requested Signal wird emittiert
+    - Test: show_connection_result() zeigt korrektes Label
+    - Test: Button nur sichtbar wenn Provider != MockProvider
+
+3b. Lokal testen: Alle 154+ Tests muessen PASS sein
+3c. HANDOFF.md updaten, committen und pushen
+
+Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.
+Dock ist rein programmatisch (kein .tscn), alle UI-Elemente in Code erstellt.
+API Keys NIEMALS in Projekt-Dateien — nur EditorSettings.
 ```
 
