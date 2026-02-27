@@ -16,7 +16,7 @@ Ein Godot-Plugin das aus natuerlichsprachigen Prompts 3D-Szenen generiert.
 Der LLM gibt JSON (SceneSpec) zurueck, das validiert und deterministisch
 in einen Godot Node-Tree gebaut wird. Kein eval(), kein Code-Execution.
 
-## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE (Phase 1-6 + Prio 1-9)
+## Aktueller Stand: MVP + ASYNC + UNDO + IMPORT/EXPORT + TWO-STAGE + VARIATION/TAGS + CI/CD + PROVIDERS + SCHEMA-RETRY + HEALTH-CHECK + MODEL-CACHE + DOCUMENTATION (Phase 1-6 + Prio 1-10)
 
 Alle 12 Module (A-L) sind implementiert, verdrahtet, und **fehlerfrei getestet**.
 Plugin laedt und entlaedt in Godot 4.6.1 headless ohne Fehler/Warnings.
@@ -26,6 +26,7 @@ Variation Mode und Asset Tag Browser sind implementiert und getestet.
 OpenAI + Anthropic Provider sind implementiert, integriert, und getestet.
 Schema-Retry mit Error-Feedback an LLM ist implementiert und getestet.
 Health-Check UI + Model Cache Persistence sind implementiert und getestet.
+Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) ist komplett.
 161 GUT Tests (10 Test-Files) laufen headless, GitHub Actions CI aktiv.
 
 ### Was bisher implementiert wurde
@@ -150,6 +151,11 @@ addons/ai_scene_gen/
     test_dock.gd                       # 14 Tests (Request shape, flags, tags, states)
   docs/
     README.md                          # Plugin-Quickstart + CI Badge
+    USER_GUIDE.md                      # Full UI walkthrough, prompt tips, features
+    OPERATOR_GUIDE.md                  # Provider setup, API keys, security, tuning
+    DEVELOPER_GUIDE.md                 # Architecture, adding providers/passes, testing
+    TROUBLESHOOTING.md                 # Error code table, common problems, debug logging
+    FAQ.md                             # Frequently asked questions
 
 .gutconfig.json                        # GUT Test-Framework Konfiguration
 .github/workflows/test.yml            # GitHub Actions CI (Godot 4.6.1 headless + GUT)
@@ -260,6 +266,7 @@ Error-Code Prefixes (Prio 4), `get_editor_interface()` deprecated (Prio 4),
 | 7 | OpenAI + Anthropic Provider | 19+19 (Provider) |
 | 8 | Schema-Retry mit Error-Feedback | 3 (Orchestrator) + 4 (Compiler) |
 | 9 | Health-Check UI + Model Cache Persistence | 7 (Dock) |
+| 10 | Documentation (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ) | — (no code changes) |
 
 **Aktuell: 161 Tests, 405 Asserts, 10 Test-Files, 0.74s, alle PASS.**
 
@@ -317,50 +324,36 @@ Vollstaendiges Designdokument: `ARCHITECTURE_INTEGRATED.md` (2117 Zeilen)
 9. ~~Schema-Retry~~ ✅ ERLEDIGT
 10. ~~Health-Check UI~~ ✅ ERLEDIGT
 11. ~~Model-Cache Persistence~~ ✅ ERLEDIGT
-12. **Documentation** (USER_GUIDE.md, OPERATOR_GUIDE.md, DEVELOPER_GUIDE.md)
+12. ~~Documentation~~ ✅ ERLEDIGT (USER_GUIDE, OPERATOR_GUIDE, DEVELOPER_GUIDE, TROUBLESHOOTING, FAQ)
 13. **Golden/Snapshot Tests** (determinism verification via frozen SceneSpec JSON)
 
 ---
 
-## Agenten-Prompt: Prio 10 — Documentation
+## Agenten-Prompt: Prio 11 — Golden/Snapshot Tests
 
 > Copy-paste diesen Block als Prompt fuer den naechsten AI-Agenten.
 
 ```
 Benutze Agenten. Lies HANDOFF.md im Projekt-Root fuer den vollstaendigen Kontext.
-Danach ARCHITECTURE_INTEGRATED.md Abschnitt 8 (Documentation Plan).
 
-Prio 1-9 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
-CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache).
-161 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
-Naechster Schritt: Prio 10 — Documentation.
+Prio 1-10 sind erledigt (Async, Undo, Import/Export, Two-Stage, Variation/Tags,
+CI/CD, OpenAI+Anthropic Provider, Schema-Retry, Health-Check + Model-Cache,
+Documentation). 161 GUT Tests laufen alle PASS. GitHub Actions CI ist aktiv.
+Naechster Schritt: Prio 11 — Golden/Snapshot Tests.
 
-SCHRITT 1: USER_GUIDE.md in addons/ai_scene_gen/docs/
-    - UI-Uebersicht (alle Dock-Elemente erklaert)
-    - Prompt-Tipps, Style-Presets, Seed/Determinismus
-    - Bounds, Asset Tags, Import/Export, Preview/Apply/Discard
-    - Variation Mode, Two-Stage Mode
-    - Health-Check / Connection-Test Erklaerung
+ZIEL: Determinism verification via frozen SceneSpec JSON.
 
-SCHRITT 2: OPERATOR_GUIDE.md in addons/ai_scene_gen/docs/
-    - Provider-Setup (MockProvider, Ollama, OpenAI, Anthropic)
-    - API Key Management (EditorSettings)
-    - Network Requirements, Offline Mode
-    - Performance Tuning (Node Limits, Poly Budget, Timeout)
-    - Security Hinweise
+SCHRITT 1: Golden Test Infrastructure
+    - test_golden.gd in addons/ai_scene_gen/tests/
+    - Lade eine .scenespec.json, baue die Szene, vergleiche Node-Tree gegen erwartete Werte
+    - Vergleiche: Node-Count, Node-Namen, Positionen (approx), Typen, Materialien
+    - Mindestens 2 Golden Specs: outdoor_clearing + interior_room
 
-SCHRITT 3: DEVELOPER_GUIDE.md in addons/ai_scene_gen/docs/
-    - Architektur-Uebersicht (Module A-L)
-    - Neuen Provider hinzufuegen
-    - Neuen Post-Processing Pass hinzufuegen
-    - Asset Packs registrieren
-    - Test-Konventionen, lokale Tests ausfuehren
+SCHRITT 2: Snapshot-Vergleich
+    - build(spec, root) zweimal mit gleichem Seed -> identisches Ergebnis
+    - Hash-Vergleich der build_result Werte
 
-SCHRITT 4: TROUBLESHOOTING.md + FAQ.md
-    - Error-Code-Tabelle (alle Codes -> Ursache + Loesung)
-    - Haeufige Probleme
-
-3b. Lokal testen: Alle 161+ Tests muessen PASS sein
+3b. Lokal testen: Alle 161+ Tests muessen PASS sein (plus neue)
 3c. HANDOFF.md updaten, committen und pushen
 
 Wichtig: Alle GDScript-Konventionen aus HANDOFF.md einhalten.

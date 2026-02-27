@@ -37,10 +37,11 @@ This EditorPlugin lets you type a natural-language prompt and generates a 3D sce
 |----------|-------|---------|----------|
 | **MockProvider** | None (offline, ships with plugin) | No | — |
 | **Ollama** | Install [Ollama](https://ollama.com), run a model | No | Configurable |
+| **OpenAI** | [API key](https://platform.openai.com/api-keys) | Yes | — |
+| **Anthropic** | [API key](https://console.anthropic.com) | Yes | — |
 
-Select the provider from the dropdown. For Ollama, models are fetched
-automatically from your local instance. The model dropdown updates
-when you switch providers.
+Select the provider from the dropdown. Models are fetched automatically.
+Use "Test Connection" to verify connectivity and refresh the model list.
 
 ### Remote Ollama (e.g. another machine on your LAN)
 
@@ -67,7 +68,7 @@ Brief overview with the module list:
 
 - **A: UI Dock** – prompt input and controls
 - **B: Orchestrator** – pipeline state machine
-- **C: LLM Provider** – pluggable AI backends (Mock, Ollama; OpenAI/Anthropic planned)
+- **C: LLM Provider** – pluggable AI backends (Mock, Ollama, OpenAI, Anthropic)
 - **D: Prompt Compiler** – builds the LLM prompt from user inputs
 - **E: SceneSpec Validator** – validates the JSON schema with security checks
 - **F: Asset Registry + Resolver** – maps tags to project assets
@@ -110,7 +111,7 @@ Register your project assets with tags so the AI can reference them. Unmatched t
 
 ## Testing
 
-The plugin includes 109 GUT tests across 8 test files under `tests/`.
+The plugin includes 161 GUT tests across 10 test files under `tests/`.
 
 **Local setup:**
 
@@ -131,6 +132,11 @@ Tests also run automatically via GitHub Actions on every push/PR to `main`.
 
 TBD
 
-## Links
+## Documentation
 
+- [User Guide](USER_GUIDE.md) — full UI walkthrough, prompt tips, features
+- [Operator Guide](OPERATOR_GUIDE.md) — provider setup, API keys, security, tuning
+- [Developer Guide](DEVELOPER_GUIDE.md) — architecture, adding providers/passes, testing
+- [Troubleshooting](TROUBLESHOOTING.md) — error code table, common problems
+- [FAQ](FAQ.md) — frequently asked questions
 - Architecture document: see `ARCHITECTURE_INTEGRATED.md` in the project root
